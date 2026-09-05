@@ -49,3 +49,15 @@ DerivedData/
 
 # === 系统 ===
 .DS_Store
+
+# === 非必要过程文档（本地保留，不进仓库）===
+agent-blueprint_副本2/
+design/
+docs/
+AI Agent 产品上线部署手册_副本.md
+AI产品Vibe Coding通用前端技术栈手册_副本4.md
+AI产品Vibe Coding通用技术栈手册(1)_副本3.md
+PRD_AI饮品生活日记_V1.0.md
+前端技术适配声明_AI饮品生活日记_设计阶段_V1.0.md
+前端设计方案_AI饮品生活日记_诗性纸刊_V1.0.md
+第一阶段开发声明_AI饮品生活日记.md
