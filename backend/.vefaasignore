@@ -23,3 +23,11 @@ Thumbs.db
 
 # veFaaS CLI config
 .vefaas/
+
+# 敏感文件与本地数据（绝不能打包上传）
+.env
+.env.*
+data/
+storage/
+*.sqlite3
+*.apk
