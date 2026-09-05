@@ -14,7 +14,7 @@ import {
 
 const release = {
   version: 'Android 测试版 · 2026.09.05',
-  size: '236 MB',
+  size: '248 MB',
 };
 const previews = [
   { image: 'calendar', name: '翻翻日历', text: '今天的小快乐，有自己的位置。' },
@@ -178,11 +178,11 @@ export default function Home() {
           <article className="platform-card android-card">
             <span className="platform-badge">ANDROID · 免费内测</span>
             <h3>给安卓的小伙伴</h3>
-            <p>本地测试包已生成，下载通道正在准备。</p>
+            <p>测试安装包已就绪，直接下载安装。</p>
             <dl><div><dt>测试包日期</dt><dd>2026.09.05</dd></div><div><dt>安装包大小</dt><dd>{release.size}</dd></div><div><dt>系统要求</dt><dd>Android 7.0 及以上</dd></div></dl>
-            <button className="platform-button" disabled><Download aria-hidden="true" /> 下载通道准备中</button>
-            <small>目前为测试签名包，正式开放前还需完成发布检查。</small>
-            <details><summary>安装前的小提醒</summary><p>通道开放后，请从本页获取安装包。若在微信内无法下载，可在系统浏览器打开本页。遇到安全风险提示请先停止安装并核实来源，不要关闭系统安全防护。</p></details>
+            <a className="platform-button" href="https://github.com/pwang7874-crypto/Dun-Dun-s-Chronicles/releases/download/v0.1.0-beta/DunDunJi-invite-release-20260905.apk" target="_blank" rel="noopener noreferrer"><Download aria-hidden="true" /> 下载 Android 测试包</a>
+            <small>目前为测试签名包，正式发布前还需更换签名。安装需要开启“允许未知来源应用”。</small>
+            <details><summary>安装前的小提醒</summary><p>请从本页获取安装包。若在微信内无法下载，可在系统浏览器打开本页。遇到安全风险提示请先停止安装并核实来源，不要关闭系统安全防护。</p></details>
           </article>
           <article className="platform-card ios-card">
             <span className="platform-badge">iOS · 筹备中</span>
