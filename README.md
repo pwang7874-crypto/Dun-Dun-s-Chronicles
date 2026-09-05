@@ -12,6 +12,14 @@
 | `backend/` | FastAPI 服务端（邀请码登录、AI 生成、额度账本、TOS 存储） |
 | `web-demo/` | 奶油风下载站 |
 
+## 线上地址（国内 · 火山云）
+
+| 服务 | 地址 |
+|---|---|
+| **下载站** | https://s696lb2hr5o1u5p17pvhk.apigateway-cn-beijing.volceapi.com/ |
+| **后端 API** | https://sqrsgj1pohmr0qh650gju.apigateway-cn-beijing.volceapi.com/ |
+| 健康检查 | https://sqrsgj1pohmr0qh650gju.apigateway-cn-beijing.volceapi.com/health/ready |
+
 ## 安装包
 
 | 平台 | 状态 |
@@ -40,4 +48,9 @@
 
 ## 当前状态
 
-内测阶段：AI 生成需邀请码；后端公网部署与 iOS 签名尚未完成。
+内测阶段：
+
+- 后端与下载站已上线（火山云 veFaaS，cn-beijing）
+- AI 生成需邀请码；登录采用「邀请码即登录」（无需手机号/短信）
+- 后端数据库为临时 SQLite（函数实例重启会丢数据），正式上线需迁移 MySQL/PostgreSQL
+- iOS 签名尚未完成（需 Apple 开发者账号）
