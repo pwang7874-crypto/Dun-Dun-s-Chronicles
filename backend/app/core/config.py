@@ -16,7 +16,11 @@ class Settings(BaseSettings):
         hide_input_in_errors=True,
     )
 
-    app_env: Literal["development", "test", "production"] = "development"
+    # 部署环境默认 production；用 DUNDUNJI_ENV 避免与 veFaaS 系统 APP_ENV 冲突。
+    app_env: Literal["development", "test", "production"] = Field(
+        default="production",
+        validation_alias="DUNDUNJI_ENV",
+    )
     app_public_base_url: str = "http://127.0.0.1:8000"
     database_url: str = "sqlite:///./data/dundunji.sqlite3"
     # 内测阶段允许使用 SQLite（函数实例重启可能丢失数据）；正式上线必须关闭。

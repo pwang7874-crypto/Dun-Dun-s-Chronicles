@@ -86,7 +86,9 @@ def readiness(request: Request, db: Session = Depends(get_db)) -> HealthResponse
         "storage": request.app.state.storage_ready,
         "sms": request.app.state.sms_ready,
     }
-    if settings.app_env == "production" and not all(components.values()):
+    # 内测阶段登录使用邀请码，短信可选，不作为就绪阻塞项。
+    required = {"database": components["database"], "ark": components["ark"], "storage": components["storage"]}
+    if settings.app_env == "production" and not all(required.values()):
         raise AppError("SERVICE_NOT_READY", "生产服务配置尚未完成", 503)
     return HealthResponse(environment=settings.app_env, components=components)
 
