@@ -30,32 +30,39 @@ interface AlphaLayerProps {
 }
 
 /*
- * Two rings are deliberately used instead of a rectangular border. Tinting an
- * Image keeps the source PNG's alpha, and the shifted copies expand only that
- * alpha silhouette. Eight slightly uneven samples per ring create the soft,
- * hand-cut contour from the reference journal without making multi-sticker
- * dragging and poster capture unnecessarily expensive.
+ * 小红书式贴纸：主体周围一圈明显的纯白描边 + 向下深色投影。
+ * 每层都是同一张透明 PNG 的染色偏移副本，透明区域保持透明，
+ * 所以描边和投影会贴合头发、吸管、把手等不规则轮廓，而不是方形框。
+ * 白边用纯白 #FFFFFF 并在奶油底上形成清晰对比，贴纸感更强。
  */
-const outerPaperEdgeOffsets: readonly Offset[] = [
-  [-8.7, 0],
-  [0, -8.9],
-  [8.8, 0.4],
-  [-0.3, 8.6],
-  [-6.4, -6.3],
-  [6.3, -6.2],
-  [-6.2, 6.4],
-  [6.4, 6.2],
+const outerWhiteEdgeOffsets: readonly Offset[] = [
+  [-12, 0],
+  [0, -12],
+  [12, 0.5],
+  [-0.4, 12],
+  [-8.6, -8.6],
+  [8.6, -8.4],
+  [-8.4, 8.6],
+  [8.5, 8.4],
+  [-15, 0.3],
+  [-0.3, -15],
+  [15, -0.2],
+  [0.2, 15],
+  [-10.8, -10.6],
+  [10.6, -10.4],
+  [-10.5, 10.7],
+  [10.7, 10.5],
 ];
 
-const innerPaperEdgeOffsets: readonly Offset[] = [
-  [-6.4, 0],
-  [0, -6.4],
-  [6.4, 0],
-  [0, 6.4],
-  [-4.55, -4.5],
-  [4.5, -4.45],
-  [-4.45, 4.55],
-  [4.55, 4.45],
+const innerWhiteEdgeOffsets: readonly Offset[] = [
+  [-8, 0],
+  [0, -8],
+  [8, 0],
+  [0, 8],
+  [-5.7, -5.7],
+  [5.7, -5.6],
+  [-5.6, 5.7],
+  [5.6, 5.6],
 ];
 
 const AlphaLayer = ({
@@ -97,9 +104,8 @@ const AlphaLayer = ({
 
 /**
  * Renders the transparent PNG produced by DeviceSubjectCutoutService as a
- * tactile paper sticker. Every visible effect is alpha-derived, so transparent
- * areas remain transparent and even hair, handles, straws and other irregular
- * details receive their own cream paper edge.
+ * red-book style sticker: a crisp white outline around the subject and a soft
+ * cast shadow below it. Every visible effect is alpha-derived.
  */
 export const PaperCutoutSticker = memo(({
   uri,
@@ -122,66 +128,49 @@ export const PaperCutoutSticker = memo(({
         style={styles.artwork}
       >
         <View style={styles.subjectBounds}>
-          {/* Soft cast shadow: blurred alpha copies, never a square view shadow. */}
+          {/* 明显向下的深色投影，让贴纸与浅色画布分离开。 */}
           <AlphaLayer
-            blurRadius={4}
+            blurRadius={6}
             imageStyle={imageStyle}
-            offset={[2.8, 9.5]}
-            opacity={0.2}
+            offset={[3, 13]}
+            opacity={0.32}
             resizeMode={resizeMode}
             source={source}
-            tintColor="#76533F"
+            tintColor="#5A3E2B"
           />
           <AlphaLayer
-            blurRadius={1.4}
+            blurRadius={2.6}
             imageStyle={imageStyle}
-            offset={[1.2, 6.4]}
-            opacity={0.16}
+            offset={[2, 7]}
+            opacity={0.24}
             resizeMode={resizeMode}
             source={source}
-            tintColor="#B28A66"
+            tintColor="#6B4A32"
           />
 
-          {/* A warm deckled rim under a creamy-white inner paper layer. */}
-          {outerPaperEdgeOffsets.map(([x, y]) => (
+          {/* 一圈纯白粗描边：先外圈后内圈，覆盖主体轮廓形成贴纸白边。 */}
+          {outerWhiteEdgeOffsets.map(([x, y]) => (
             <AlphaLayer
               key={`outer:${x}:${y}`}
               imageStyle={imageStyle}
               offset={[x, y]}
               resizeMode={resizeMode}
               source={source}
-              tintColor="#EFE2CC"
+              tintColor="#FFFFFF"
             />
           ))}
-          {innerPaperEdgeOffsets.map(([x, y]) => (
+          {innerWhiteEdgeOffsets.map(([x, y]) => (
             <AlphaLayer
               key={`inner:${x}:${y}`}
               imageStyle={imageStyle}
               offset={[x, y]}
               resizeMode={resizeMode}
               source={source}
-              tintColor="#FFFCF3"
+              tintColor="#FFFFFF"
             />
           ))}
 
-          {/* Opposing edge light creates the pressed, slightly raised paper lip. */}
-          <AlphaLayer
-            imageStyle={imageStyle}
-            offset={[1.5, 1.9]}
-            opacity={0.32}
-            resizeMode={resizeMode}
-            source={source}
-            tintColor="#C8AC83"
-          />
-          <AlphaLayer
-            imageStyle={imageStyle}
-            offset={[-1.35, -1.55]}
-            opacity={0.86}
-            resizeMode={resizeMode}
-            source={source}
-            tintColor="#FFFFFF"
-          />
-
+          {/* 主体本身。 */}
           <Image
             accessible={false}
             fadeDuration={0}
@@ -190,22 +179,14 @@ export const PaperCutoutSticker = memo(({
             style={[styles.layer, imageStyle, styles.alphaImage]}
           />
 
-          {/* Sub-pixel highlights give the print a restrained fibrous matte grain. */}
+          {/* 轻微顶部高光，保留一点手账质感但不抢白边。 */}
           <AlphaLayer
             imageStyle={imageStyle}
-            offset={[-0.35, -0.25]}
-            opacity={0.025}
+            offset={[-0.6, -0.8]}
+            opacity={0.12}
             resizeMode={resizeMode}
             source={source}
-            tintColor="#FFFDF7"
-          />
-          <AlphaLayer
-            imageStyle={imageStyle}
-            offset={[0.4, 0.5]}
-            opacity={0.014}
-            resizeMode={resizeMode}
-            source={source}
-            tintColor="#9A7658"
+            tintColor="#FFFFFF"
           />
         </View>
       </View>
@@ -235,18 +216,18 @@ const styles = StyleSheet.create({
   },
   artwork: {
     position: 'absolute',
-    bottom: -11,
-    left: -11,
-    right: -11,
-    top: -11,
+    bottom: -16,
+    left: -16,
+    right: -16,
+    top: -16,
     overflow: 'visible',
   },
   subjectBounds: {
     position: 'absolute',
-    bottom: 11,
-    left: 11,
-    right: 11,
-    top: 11,
+    bottom: 16,
+    left: 16,
+    right: 16,
+    top: 16,
     overflow: 'visible',
   },
   layerFrame: {

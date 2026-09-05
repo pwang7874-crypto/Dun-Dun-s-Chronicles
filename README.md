@@ -24,7 +24,7 @@
 
 | 平台 | 状态 |
 |---|---|
-| **Android** | [下载 APK](https://github.com/pwang7874-crypto/Dun-Dun-s-Chronicles/releases/download/v0.1.0-beta/DunDunJi-invite-release-20260905.apk)（测试签名，内测可用，正式发布前需更换签名） |
+| **Android** | [下载 APK](https://github.com/pwang7874-crypto/Dun-Dun-s-Chronicles/releases/download/v0.1.0-beta/DunDunJi-invite-sticker-20260905.apk)（测试签名，内测可用，正式发布前需更换签名） |
 | **iOS** | 暂无 IPA —— 需要 Apple 开发者账号与签名证书后才能构建，目前只到模拟器版 |
 
 ## 核心功能

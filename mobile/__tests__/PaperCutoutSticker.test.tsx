@@ -43,16 +43,16 @@ describe('PaperCutoutSticker', () => {
     });
 
     const images = root.queryAll(instance => instance.type === 'Image');
-    // Two alpha rings plus shadow, emboss and print layers make the
-    // white hand-cut edge visibly thicker than a plain transparent cutout.
+    // Two shadow layers, two white outline rings, the subject print and a
+    // highlight make the white sticker edge visibly thicker than a plain cutout.
     expect(images.length).toBeGreaterThanOrEqual(20);
     expect(images.every(image => image.props.source.uri === uri)).toBe(true);
     expect(images.every(image => image.props.accessible === false)).toBe(true);
-    expect(images.some(image => image.props.blurRadius === 4)).toBe(true);
+    expect(images.some(image => image.props.blurRadius === 6)).toBe(true);
 
     const imageStyles = images.map(image => StyleSheet.flatten(image.props.style));
-    expect(imageStyles.some(style => style.tintColor === '#FFFCF3')).toBe(true);
-    expect(imageStyles.some(style => style.tintColor === '#EFE2CC')).toBe(true);
+    expect(imageStyles.some(style => style.tintColor === '#FFFFFF')).toBe(true);
+    expect(imageStyles.some(style => style.tintColor === '#5A3E2B')).toBe(true);
     expect(imageStyles.some(style => style.tintColor === undefined)).toBe(true);
     expect(imageStyles.every(style => style.backgroundColor === 'transparent')).toBe(true);
   });

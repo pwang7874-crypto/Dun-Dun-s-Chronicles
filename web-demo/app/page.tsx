@@ -180,7 +180,7 @@ export default function Home() {
             <h3>给安卓的小伙伴</h3>
             <p>测试安装包已就绪，直接下载安装。</p>
             <dl><div><dt>测试包日期</dt><dd>2026.09.05</dd></div><div><dt>安装包大小</dt><dd>{release.size}</dd></div><div><dt>系统要求</dt><dd>Android 7.0 及以上</dd></div></dl>
-            <a className="platform-button" href="https://github.com/pwang7874-crypto/Dun-Dun-s-Chronicles/releases/download/v0.1.0-beta/DunDunJi-invite-release-20260905.apk" target="_blank" rel="noopener noreferrer"><Download aria-hidden="true" /> 下载 Android 测试包</a>
+            <a className="platform-button" href="https://github.com/pwang7874-crypto/Dun-Dun-s-Chronicles/releases/download/v0.1.0-beta/DunDunJi-invite-sticker-20260905.apk" target="_blank" rel="noopener noreferrer"><Download aria-hidden="true" /> 下载 Android 测试包</a>
             <small>目前为测试签名包，正式发布前还需更换签名。安装需要开启“允许未知来源应用”。</small>
             <details><summary>安装前的小提醒</summary><p>请从本页获取安装包。若在微信内无法下载，可在系统浏览器打开本页。遇到安全风险提示请先停止安装并核实来源，不要关闭系统安全防护。</p></details>
           </article>
