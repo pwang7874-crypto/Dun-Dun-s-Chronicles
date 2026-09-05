@@ -1,0 +1,51 @@
+# === 敏感文件（绝不能上传）===
+.env
+.env.*
+!.env.example
+web-demo/.openai/
+*.pem
+*.key
+*.p12
+
+# === 数据库与本地数据 ===
+*.sqlite3
+*.sqlite
+*.db
+backend/data/
+backend/storage/
+
+# === 大文件（安装包/构建产物）===
+*.apk
+*.ipa
+*.aab
+mobile/artifacts/
+*.hprof
+
+# === 依赖 ===
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# === 构建产物 ===
+build/
+.gradle/
+.toolchains/
+.vinext/
+.wrangler/
+dist/
+.next/
+out/
+.idea/
+.kotlin/
+.cxx/
+*.tsbuildinfo
+vendor/bundle/
+Pods/
+DerivedData/
+
+# === 系统 ===
+.DS_Store

@@ -1,0 +1,49 @@
+# Resolve react_native_pods.rb with node to allow for hoisting
+require Pod::Executable.execute_command('node', ['-p',
+  'require.resolve(
+    "react-native/scripts/react_native_pods.rb",
+    {paths: [process.argv[1]]},
+  )', __dir__]).strip
+
+# CocoaPods captures subprocess output as ASCII-8BIT. When the workspace path
+# contains non-ASCII characters (for example, "奶茶收集"), React Native's Hermes
+# podspec later compares that output with UTF-8 paths and Ruby raises an encoding
+# compatibility error. Normalize valid command output before podspec evaluation.
+class << Pod::Executable
+  unless method_defined?(:execute_command_without_utf8_path_fix)
+    alias_method :execute_command_without_utf8_path_fix, :execute_command
+
+    def execute_command(executable, command, raise_on_failure = true)
+      execute_command_without_utf8_path_fix(executable, command, raise_on_failure)
+        .force_encoding(Encoding::UTF_8)
+    end
+  end
+end
+
+platform :ios, min_ios_version_supported
+prepare_react_native_project!
+
+linkage = ENV['USE_FRAMEWORKS']
+if linkage != nil
+  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
+  use_frameworks! :linkage => linkage.to_sym
+end
+
+target 'DrinkDiary' do
+  config = use_native_modules!
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    # An absolute path to your application root.
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+      # :ccache_enabled => true
+    )
+  end
+end

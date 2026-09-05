@@ -1,0 +1,213 @@
+diff --git a/node_modules/react-native-image-analysis/android/build.gradle b/node_modules/react-native-image-analysis/android/build.gradle
+--- a/node_modules/react-native-image-analysis/android/build.gradle
++++ b/node_modules/react-native-image-analysis/android/build.gradle
+@@ -156,6 +156,10 @@
+   compileOnly "com.google.android.gms:play-services-mlkit-subject-segmentation:${MLKIT_SUBJECT_SEGMENTATION}"
+   if (subjectSegmentation) {
+     implementation "com.google.android.gms:play-services-mlkit-subject-segmentation:${MLKIT_SUBJECT_SEGMENTATION}"
++    // Bundled person model: a reliable offline fallback for outfit/selfie
++    // stickers when the Play-Services subject model is not ready or returns
++    // no generic subject.
++    implementation "com.google.mlkit:segmentation-selfie:16.0.0-beta6"
+   }
+ 
+   // Image labeling bundles its own model, so it works offline like the text
+diff --git a/node_modules/react-native-image-analysis/android/src/main/java/com/imageanalysis/SubjectSegmentation.kt b/node_modules/react-native-image-analysis/android/src/main/java/com/imageanalysis/SubjectSegmentation.kt
+--- a/node_modules/react-native-image-analysis/android/src/main/java/com/imageanalysis/SubjectSegmentation.kt
++++ b/node_modules/react-native-image-analysis/android/src/main/java/com/imageanalysis/SubjectSegmentation.kt
+@@ -7,6 +7,8 @@
+ import com.facebook.react.bridge.Arguments
+ import com.facebook.react.bridge.WritableMap
+ import com.google.mlkit.vision.common.InputImage
++import com.google.mlkit.vision.segmentation.Segmentation
++import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions
+ import com.google.mlkit.vision.segmentation.subject.SubjectSegmentation
+ import com.google.mlkit.vision.segmentation.subject.SubjectSegmenterOptions
+ import java.io.File
+@@ -39,6 +41,8 @@
+ 
+   private const val CLASS_NAME =
+     "com.google.mlkit.vision.segmentation.subject.SubjectSegmentation"
++  private const val SELFIE_CLASS_NAME =
++    "com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions"
+ 
+   /** Whether the opt-in artifact was actually compiled into this app. */
+   val isCompiledIn: Boolean by lazy {
+@@ -52,18 +56,29 @@
+     }
+   }
+ 
+-  fun isAvailable(context: Context): Boolean = isCompiledIn && PlayServices.isAvailable(context)
++  private val isSelfieCompiledIn: Boolean by lazy {
++    try {
++      Class.forName(SELFIE_CLASS_NAME)
++      true
++    } catch (error: ClassNotFoundException) {
++      false
++    } catch (error: LinkageError) {
++      false
++    }
++  }
+ 
++  fun isAvailable(context: Context): Boolean =
++    isSelfieCompiledIn || isCompiledIn && PlayServices.isAvailable(context)
++
+   fun unavailableReason(context: Context): String =
+     when {
+-      !isCompiledIn ->
++      !isCompiledIn && !isSelfieCompiledIn ->
+         "Subject lifting is not compiled into this app. Set " +
+           "`imageAnalysisSubjectSegmentation = true` in the ext block of your " +
+           "android/build.gradle and rebuild. Note that the underlying ML Kit artifact " +
+           "is a beta that Google has not updated since November 2023."
+-      !PlayServices.isAvailable(context) ->
+-        "Subject lifting needs Google Play Services, which is not available on this " +
+-          "device. There is no bundled ML Kit alternative for subject segmentation."
++      !PlayServices.isAvailable(context) && !isSelfieCompiledIn ->
++        "Subject lifting needs Google Play Services or the bundled person model."
+       else -> "Subject lifting is unavailable on this device."
+     }
+ 
+@@ -80,6 +95,11 @@
+       return
+     }
+ 
++    if (!isCompiledIn || !PlayServices.isAvailable(context)) {
++      extractPerson(context, bitmap, options, onSuccess, onFailure)
++      return
++    }
++
+     val settled = AtomicBoolean(false)
+     val handler = Handler(Looper.getMainLooper())
+ 
+@@ -122,10 +142,7 @@
+           val foreground = result.foregroundBitmap
+           val count = result.subjects.size
+           if (foreground == null || count == 0) {
+-            fail(
+-              ImageAnalysisException(
+-                ErrorCode.NO_SUBJECT,
+-                "ML Kit found no liftable subject in this image."))
++            extractPerson(context, bitmap, options, onSuccess, onFailure, settled)
+             return@addOnSuccessListener
+           }
+           if (settled.compareAndSet(false, true)) {
+@@ -144,18 +161,109 @@
+         }
+         .addOnFailureListener { error ->
+           segmenter.close()
+-          fail(
+-            ImageAnalysisException(
+-              ErrorCode.SUBJECT_UNAVAILABLE,
+-              "ML Kit subject segmentation failed: ${error.message}. This beta model is " +
+-                "known to fail on emulators; try a physical device."))
++          if (isSelfieCompiledIn) {
++            extractPerson(context, bitmap, options, onSuccess, onFailure, settled)
++          } else {
++            fail(
++              ImageAnalysisException(
++                ErrorCode.SUBJECT_UNAVAILABLE,
++                "ML Kit subject segmentation failed: ${error.message}."))
++          }
+         }
+     } catch (error: Throwable) {
+-      fail(
+-        ImageAnalysisException(
+-          ErrorCode.SUBJECT_UNAVAILABLE,
+-          "ML Kit subject segmentation could not start: ${error.message}"))
++      if (isSelfieCompiledIn) {
++        extractPerson(context, bitmap, options, onSuccess, onFailure, settled)
++      } else {
++        fail(
++          ImageAnalysisException(
++            ErrorCode.SUBJECT_UNAVAILABLE,
++            "ML Kit subject segmentation could not start: ${error.message}"))
++      }
++    }
++  }
++
++  /**
++   * Offline person segmentation fallback used by outfit/selfie photos. The
++   * model is bundled in the APK, so it also covers first-run and devices where
++   * the Play-Services subject model is not installed yet.
++   */
++  private fun extractPerson(
++    context: Context,
++    bitmap: Bitmap,
++    options: SubjectOptions,
++    onSuccess: (WritableMap) -> Unit,
++    onFailure: (ImageAnalysisException) -> Unit,
++    sharedSettled: AtomicBoolean? = null,
++  ) {
++    if (!isSelfieCompiledIn) {
++      onFailure(ImageAnalysisException(ErrorCode.NO_SUBJECT, "No person was found."))
++      return
+     }
++
++    val settled = sharedSettled ?: AtomicBoolean(false)
++    val selfieOptions =
++      SelfieSegmenterOptions.Builder()
++        .setDetectorMode(SelfieSegmenterOptions.SINGLE_IMAGE_MODE)
++        .build()
++    val selfie = Segmentation.getClient(selfieOptions)
++
++    selfie.process(InputImage.fromBitmap(bitmap, 0))
++      .addOnSuccessListener { result ->
++        selfie.close()
++        if (settled.get()) return@addOnSuccessListener
++        try {
++          val width = result.width
++          val height = result.height
++          val mask = result.buffer.duplicate().apply { rewind() }.asFloatBuffer()
++          if (width != bitmap.width || height != bitmap.height) {
++            if (settled.compareAndSet(false, true)) {
++              onFailure(
++                ImageAnalysisException(ErrorCode.NO_SUBJECT, "Person mask size was invalid."))
++            }
++            return@addOnSuccessListener
++          }
++
++          val pixels = IntArray(width * height)
++          bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
++          var foregroundPixels = 0
++          for (index in pixels.indices) {
++            val confidence = if (mask.hasRemaining()) mask.get() else 0f
++            if (confidence >= 0.35f) foregroundPixels += 1
++            val alpha = (((confidence - 0.18f) / 0.64f) * 255f)
++              .toInt().coerceIn(0, 255)
++            pixels[index] = (alpha shl 24) or (pixels[index] and 0x00ffffff)
++          }
++          if (foregroundPixels < pixels.size / 200) {
++            if (settled.compareAndSet(false, true)) {
++              onFailure(ImageAnalysisException(ErrorCode.NO_SUBJECT, "No person was found."))
++            }
++            return@addOnSuccessListener
++          }
++
++          val foreground = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
++          foreground.setPixels(pixels, 0, width, 0, 0, width, height)
++          mask.rewind()
++          if (settled.compareAndSet(false, true)) {
++            onSuccess(assemble(context, foreground, mask, 1, options))
++          }
++        } catch (error: Exception) {
++          if (settled.compareAndSet(false, true)) {
++            onFailure(
++              ImageAnalysisException(
++                ErrorCode.UNKNOWN,
++                "Person cutout failed: ${error.message}"))
++          }
++        }
++      }
++      .addOnFailureListener { error ->
++        selfie.close()
++        if (settled.compareAndSet(false, true)) {
++          onFailure(
++            ImageAnalysisException(
++              ErrorCode.SUBJECT_UNAVAILABLE,
++              "Person segmentation failed: ${error.message}"))
++        }
++      }
+   }
+ 
+   /**

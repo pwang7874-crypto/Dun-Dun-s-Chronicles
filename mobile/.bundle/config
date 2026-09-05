@@ -1,0 +1,3 @@
+---
+BUNDLE_PATH: ".toolchains/vendor-bundle"
+BUNDLE_FORCE_RUBY_PLATFORM: "1"

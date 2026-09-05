@@ -1,0 +1,28 @@
+[project]
+name = "dundunji-backend"
+version = "0.1.0"
+description = "吨吨记服务端：登录、AI 艺术化、会员权益与私有图片存储"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
+  "pydantic-settings>=2.10,<3",
+  "python-multipart>=0.0.20,<1",
+  "sqlalchemy>=2.0,<3",
+  "tos>=2.8,<3",
+  "uvicorn[standard]>=0.35,<1",
+  "volcengine-python-sdk>=5.0.47,<6",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4,<9",
+  "pytest-cov>=6.2,<7",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["app"]

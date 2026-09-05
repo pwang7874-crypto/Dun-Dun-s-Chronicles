@@ -1,0 +1,24 @@
+diff --git a/node_modules/@react-native-camera-roll/camera-roll/ios/RNCCameraRoll.mm b/node_modules/@react-native-camera-roll/camera-roll/ios/RNCCameraRoll.mm
+index 51e837d..5b79296 100644
+--- a/node_modules/@react-native-camera-roll/camera-roll/ios/RNCCameraRoll.mm
++++ b/node_modules/@react-native-camera-roll/camera-roll/ios/RNCCameraRoll.mm
+@@ -219,7 +219,18 @@ RCT_EXPORT_METHOD(saveToCameraRoll:(NSURLRequest *)request
+         PHFetchResult<PHAsset *> *createdAsset = [PHAsset fetchAssetsWithLocalIdentifiers:@[placeholder.localIdentifier]
+                                                                                   options:options];
+         if (createdAsset.count < 1) {
+-          reject(kErrorUnableToSave, nil, nil);
++          // Add-only authorization intentionally prevents reading the asset we
++          // just created. The write has already succeeded, so return the
++          // identifier instead of reporting a false save failure.
++          NSString *localIdentifier = placeholder.localIdentifier ?: @"";
++          resolve(@{
++            @"node": @{
++              @"id": localIdentifier,
++              @"image": @{
++                @"uri": [NSString stringWithFormat:@"ph://%@", localIdentifier]
++              }
++            }
++          });
+           return;
+         }
+         NSDictionary *dictionary = [self convertAssetToDictionary:[createdAsset firstObject]

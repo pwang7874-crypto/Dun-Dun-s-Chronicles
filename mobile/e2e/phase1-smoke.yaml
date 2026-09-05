@@ -1,0 +1,9 @@
+appId: com.drinkdiary.mobile
+---
+- launchApp:
+    clearState: true
+- assertVisible: "把日子，记在一杯里"
+- tapOn: "记录这一杯"
+- assertVisible: "先留下一张照片"
+- assertVisible: "拍一张"
+- assertVisible: "从相册选择"
