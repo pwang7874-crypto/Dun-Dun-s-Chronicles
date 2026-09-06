@@ -13,8 +13,12 @@ import {
 } from 'lucide-react';
 
 const release = {
-  version: 'Android 测试版 · 2026.09.05',
-  size: '248 MB',
+  version: '1.0.2-beta',
+  date: '2026.09.06',
+  size: '约 362 MB · 四架构',
+  downloadUrl: 'https://github.com/pwang7874-crypto/Dun-Dun-s-Chronicles/releases/download/v1.0.2-beta/DunDunJi-1.0.2-beta-android-universal.apk',
+  notesUrl: 'https://github.com/pwang7874-crypto/Dun-Dun-s-Chronicles/releases/tag/v1.0.2-beta',
+  sha256: '5e2a7c005e6b738a422003edb4c0790c3e87a11c17c532ff3d25cac086f49aff',
 };
 const previews = [
   { image: 'calendar', name: '翻翻日历', text: '今天的小快乐，有自己的位置。' },
@@ -178,11 +182,14 @@ export default function Home() {
           <article className="platform-card android-card">
             <span className="platform-badge">ANDROID · 免费内测</span>
             <h3>给安卓的小伙伴</h3>
-            <p>测试安装包已就绪，直接下载安装。</p>
-            <dl><div><dt>测试包日期</dt><dd>2026.09.05</dd></div><div><dt>安装包大小</dt><dd>{release.size}</dd></div><div><dt>系统要求</dt><dd>Android 7.0 及以上</dd></div></dl>
-            <a className="platform-button" href="https://github.com/pwang7874-crypto/Dun-Dun-s-Chronicles/releases/download/v0.1.0-beta/DunDunJi-invite-sticker-20260905.apk" target="_blank" rel="noopener noreferrer"><Download aria-hidden="true" /> 下载 Android 测试包</a>
-            <small>目前为测试签名包，正式发布前还需更换签名。安装需要开启“允许未知来源应用”。</small>
-            <details><summary>安装前的小提醒</summary><p>请从本页获取安装包。若在微信内无法下载，可在系统浏览器打开本页。遇到安全风险提示请先停止安装并核实来源，不要关闭系统安全防护。</p></details>
+            <p>更清晰的小物纸贴、软乎乎的 AI 小工坊，还有自动收好的新作品。</p>
+            <dl><div><dt>当前版本</dt><dd>{release.version}</dd></div><div><dt>更新日期</dt><dd>{release.date}</dd></div><div><dt>安装包大小</dt><dd>{release.size}</dd></div><div><dt>系统要求</dt><dd>Android 7.0 及以上</dd></div></dl>
+            <a className="platform-button" href={release.downloadUrl} target="_blank" rel="noopener noreferrer"><Download aria-hidden="true" /> 下载 Android {release.version}</a>
+            <small>与旧测试版同签名，请直接覆盖安装，不要先卸载，以免丢失本机记录。安装包由 GitHub 提供，国内网络下载速度可能受影响。</small>
+            <p className="release-notice">小提醒：邀请码登录与云端任务仍可能因服务数据丢失而失效，此次更新未解决该问题。本地记录、贴纸和排版可先使用。</p>
+            <details><summary>这一版多了哪些小惊喜？</summary><p>小主体改用原图区域细化；小樱花去掉表情。AI 创作新增即时反馈、阶段进度与等待时间、12 种风格示例、奶油风结果提示，成功作品自动回填主图并收入小画册。</p><p><a href={release.notesUrl} target="_blank" rel="noopener noreferrer">查看完整更新说明 ↗</a></p></details>
+            <details><summary>安装前的小提醒</summary><p>请从本页获取安装包。若在微信内无法下载，可在系统浏览器打开本页。当前仍为测试签名包，非商店正式包。遇到安全风险提示请先停止安装并核实来源，不要关闭系统安全防护。</p></details>
+            <details><summary>核对安装包</summary><p>文件为四架构通用包（arm64-v8a / armeabi-v7a / x86 / x86_64），共 361,780,394 字节。</p><p>SHA-256：<code className="release-checksum">{release.sha256}</code></p></details>
           </article>
           <article className="platform-card ios-card">
             <span className="platform-badge">iOS · 筹备中</span>
@@ -199,8 +206,8 @@ export default function Home() {
         <div><p className="eyebrow">A NOTE FROM 小酱油</p><h2 id="notes-heading">开始前，几句悄悄话。</h2><Image src="/app/app-icon.png" alt="" width={100} height={100} /></div>
         <div className="faq-list">
           <details><summary>内测需要付款吗？</summary><p>本轮内测不收费，不用购买会员。请不要向任何个人二维码付款来获取内测资格。</p></details>
-          <details><summary>AI 生图现在能用吗？</summary><p>尚未开放。后续计划通过邀请码限量测试，名额和次数确认后再公布；不承诺无限免费生成。</p></details>
-          <details><summary>照片和记录保存在哪里？</summary><p>当前测试版以本机保存为主，尚未开放云同步。卸载应用或清除数据可能丢失记录，请保留原始照片，重要作品及时导出。</p></details>
+          <details><summary>AI 生图现在能用吗？</summary><p>新版已接入邀请码限量创作，并加入生成进度和作品回填。但云端邀请码、账号与任务数据仍存在丢失问题，暂不能保证稳定使用，也不承诺无限免费生成。遇到登录失效或任务异常请先停止重试，本地创作不受此限制。</p></details>
+          <details><summary>照片和记录保存在哪里？</summary><p>日常记录与免费编辑以本机保存为主，尚未开放记录云同步。主动使用 AI 创作时，所选照片会上传到云端处理。卸载应用或清除数据可能丢失记录，请保留原始照片，重要作品及时导出。</p></details>
           <details><summary>为什么有些照片没有抠成贴纸？</summary><p>主体识别能力受设备和照片影响。不支持或识别失败时保留原图，不会把矩形裁剪冒充主体抠图。</p></details>
         </div>
       </section>
