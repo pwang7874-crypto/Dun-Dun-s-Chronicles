@@ -1,5 +1,5 @@
 import Slider from '@react-native-community/slider';
-import { usePreventRemove } from '@react-navigation/native';
+import { useIsFocused, usePreventRemove } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -26,7 +26,6 @@ import {
   type CreativeProject,
   type JournalSticker,
   type JournalStickerCategory,
-  type PhotoAssetV1,
   type RecordAggregate,
   type SugarLevel,
 } from '../../domain/models';
@@ -36,6 +35,7 @@ import { ErrorNotice } from '../../design-system/components/ErrorNotice';
 import { LoadingView } from '../../design-system/components/LoadingView';
 import { PaperTexture } from '../../design-system/components/StickerBits';
 import { PaperCutoutSticker } from '../../design-system/components/PaperCutoutSticker';
+import { PocketCompanion } from '../../design-system/components/PocketCompanion';
 import { colors, radii, spacing } from '../../design-system/theme';
 import { newId } from '../../shared/id';
 import { localDateKey } from '../../shared/dates';
@@ -54,7 +54,8 @@ import {
 } from './drinkOptions';
 import { saveRecord } from './saveRecord';
 import { addJournalStickerFromLibrary } from './addJournalSticker';
-import { journalStickerAssetFor } from '../shared/recordAssets';
+import { remakeJournalSticker } from './remakeJournalSticker';
+import { journalStickerAssetFor, studioSourceAssetFor } from '../shared/recordAssets';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Editor'>;
 
@@ -96,8 +97,7 @@ const filterSwatches: Record<FilterPresetId, string> = {
   'mono-notes': '#77736E',
 };
 
-const originalFor = (aggregate: RecordAggregate): PhotoAssetV1 | undefined =>
-  aggregate.assets.find(asset => asset.id === aggregate.record.originalAssetId);
+const originalFor = studioSourceAssetFor;
 
 const projectForSavedRecord = (
   recordId: string,
@@ -134,6 +134,8 @@ const projectForSavedRecord = (
 });
 
 export const RecordEditorScreen = ({ route, navigation }: Props) => {
+  const isFocused = useIsFocused();
+  const [remakingId, setRemakingId] = useState<string>();
   const {
     repository,
     creativeRepository,
@@ -183,7 +185,7 @@ export const RecordEditorScreen = ({ route, navigation }: Props) => {
           note: result.record.note ?? '',
         });
         setOccurredAt(new Date(result.record.occurredAt));
-        setIntensity(result.recipe?.intensity ?? 0.7);
+        setIntensity(result.recipe?.intensity ?? (result.record.displayAssetId ? 0 : 0.7));
         setPresetId(result.recipe?.presetId ?? 'cream-morning');
       })
       .catch(loadError => {
@@ -234,6 +236,7 @@ export const RecordEditorScreen = ({ route, navigation }: Props) => {
       const record = await saveRecord(
         {
           aggregate,
+          sourceAssetId: original?.id,
           intensity,
           presetId,
           form: {
@@ -326,7 +329,7 @@ export const RecordEditorScreen = ({ route, navigation }: Props) => {
   ].filter(Boolean).length;
 
   const addLifeSticker = async (category: JournalStickerCategory) => {
-    if (addingSticker) {
+    if (addingSticker || remakingId) {
       return;
     }
     setAddingSticker(category);
@@ -352,7 +355,7 @@ export const RecordEditorScreen = ({ route, navigation }: Props) => {
       }
       setUploadNotice(
         result.autoCutout
-          ? '✨ 已在手机上抠出主体，再裹上白色纸边、凹凸高光和柔软落影，变成奶油纸贴啦。'
+          ? '✨ 清晰的原色照片，裹上白色纸边和柔软落影，变成小纸贴啦。'
           : '🎀 照片已加入奶油相框。这次未能识别主体，所以没有把方形原图伪装成透明贴纸。',
       );
     } catch (stickerError) {
@@ -364,6 +367,22 @@ export const RecordEditorScreen = ({ route, navigation }: Props) => {
     } finally {
       setAddingSticker(undefined);
     }
+  };
+
+  const remakeLifeSticker = async (sticker: JournalSticker) => {
+    if (remakingId || addingSticker) return;
+    const source = aggregate.assets.find(asset => asset.id === sticker.sourceAssetId);
+    if (!source) { setError('原图暂时找不到，请重新上传这张照片。'); return; }
+    setRemakingId(sticker.id);
+    setError(undefined);
+    try {
+      await remakeJournalSticker(sticker, source, { assetStore, subjectCutoutService, creativeRepository, now });
+      const refreshed = await repository.findById(aggregate.record.id);
+      if (refreshed) setAggregate(refreshed);
+      setUploadNotice('✨ 已用原图重新制作清晰纸贴，名字和摆放位置都保留啦。');
+    } catch {
+      setError('这次没有找到清晰主体，原图和旧贴纸都还在。可以试试主体更完整的照片。');
+    } finally { setRemakingId(undefined); }
   };
 
   const updateLifeSticker = async (sticker: JournalSticker, label: string) => {
@@ -730,10 +749,19 @@ export const RecordEditorScreen = ({ route, navigation }: Props) => {
                       <Text style={styles.lifeStickerStatus}>
                         {sticker.cutoutStatus === 'ready' ? '奶油纸贴' : '奶油照片卡'} · {sticker.associationScope === 'day' ? '当天共享' : '仅这一杯'}
                       </Text>
-                      <Pressable accessibilityRole="button" onPress={() => removeLifeSticker(sticker).catch(() => undefined)}>
+                      <Pressable accessibilityRole="button" disabled={Boolean(remakingId || addingSticker)} onPress={() => removeLifeSticker(sticker).catch(() => undefined)}>
                         <Text style={styles.removeSticker}>移除</Text>
                       </Pressable>
                     </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`用原图重做${sticker.label}贴纸`}
+                      disabled={Boolean(remakingId || addingSticker)}
+                      onPress={() => remakeLifeSticker(sticker)}
+                      style={({ pressed }) => [styles.remakeButton, pressed && { opacity: 0.65 }]}
+                    >
+                      <Text style={styles.remakeText}>{remakingId === sticker.id ? '正在细细剪纸…' : '✂ 用原图重做贴纸'}</Text>
+                    </Pressable>
                   </View>
                 );
               })}
@@ -741,7 +769,8 @@ export const RecordEditorScreen = ({ route, navigation }: Props) => {
           ) : (
             <Text style={styles.lifeEmpty}>不添加也可以，饮品仍然是这篇日记的主角。</Text>
           )}
-          <Text style={styles.lifePrivacy}>主体抠取与奶油纸贴效果免费在设备端完成；如果未识别到主体，会如实保留为奶油照片卡。</Text>
+          <Text style={styles.lifePrivacy}>照片在手机本机制作，不上传、不消耗生图次数。旧噪点图可点“用原图重做贴纸”；识别不清晰时保留原图。</Text>
+          <PocketCompanion mood="photo" active={isFocused && activeStep === 'life'} />
         </View> : null}
 
         {activeStep === 'finish' ? <View style={styles.finishStack}>
@@ -926,6 +955,8 @@ export const RecordEditorScreen = ({ route, navigation }: Props) => {
 };
 
 const styles = StyleSheet.create({
+  remakeButton: { minHeight: 44, marginTop: 8, paddingHorizontal: 12, borderRadius: 16, backgroundColor: colors.butterSoft, alignItems: 'center', justifyContent: 'center' },
+  remakeText: { color: colors.cocoa, fontSize: 12, fontWeight: '700' },
   safeArea: { flex: 1, backgroundColor: colors.paper },
   centered: {
     flex: 1,

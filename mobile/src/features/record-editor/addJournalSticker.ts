@@ -52,8 +52,12 @@ export const addJournalStickerFromLibrary = async (
         const cutoutPhoto = await dependencies.subjectCutoutService.extractSubject(
           dependencies.assetStore.resolveUri(source),
         );
-        cutout = await dependencies.assetStore.saveOriginal(cutoutPhoto, recordId);
-        savedAssets.push(cutout);
+        try {
+          cutout = await dependencies.assetStore.saveOriginal(cutoutPhoto, recordId);
+          savedAssets.push(cutout);
+        } finally {
+          await dependencies.subjectCutoutService.releaseTemporary?.(cutoutPhoto.uri).catch(() => undefined);
+        }
       } catch {
         // A chosen photo is still useful even when the on-device subject model
         // cannot isolate it. Persist it honestly as a framed photo card; the UI

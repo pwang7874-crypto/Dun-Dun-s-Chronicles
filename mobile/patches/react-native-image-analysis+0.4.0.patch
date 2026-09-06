@@ -92,7 +92,7 @@ diff --git a/node_modules/react-native-image-analysis/android/src/main/java/com/
              return@addOnSuccessListener
            }
            if (settled.compareAndSet(false, true)) {
-@@ -144,18 +161,109 @@
+@@ -144,18 +161,113 @@
          }
          .addOnFailureListener { error ->
            segmenter.close()
@@ -158,7 +158,10 @@ diff --git a/node_modules/react-native-image-analysis/android/src/main/java/com/
 +        try {
 +          val width = result.width
 +          val height = result.height
-+          val mask = result.buffer.duplicate().apply { rewind() }.asFloatBuffer()
++          // duplicate() resets byte order to BIG_ENDIAN; preserve the producer's
++          // order before reading floats, otherwise alpha becomes random speckle.
++          val sourceMask = result.buffer
++          val mask = sourceMask.duplicate().order(sourceMask.order()).apply { rewind() }.asFloatBuffer()
 +          if (width != bitmap.width || height != bitmap.height) {
 +            if (settled.compareAndSet(false, true)) {
 +              onFailure(
@@ -172,6 +175,7 @@ diff --git a/node_modules/react-native-image-analysis/android/src/main/java/com/
 +          var foregroundPixels = 0
 +          for (index in pixels.indices) {
 +            val confidence = if (mask.hasRemaining()) mask.get() else 0f
++            require(confidence.isFinite() && confidence in 0f..1f) { "Invalid mask confidence" }
 +            if (confidence >= 0.35f) foregroundPixels += 1
 +            val alpha = (((confidence - 0.18f) / 0.64f) * 255f)
 +              .toInt().coerceIn(0, 255)

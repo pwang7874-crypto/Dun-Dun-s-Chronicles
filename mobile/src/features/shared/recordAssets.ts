@@ -26,6 +26,12 @@ export const displayAssetFor = (
     asset => asset.id === aggregate.record.originalAssetId,
   );
 
+/** Edit the selected source, not a second pass over its already-filtered display derivative. */
+export const studioSourceAssetFor = (aggregate: RecordAggregate): PhotoAssetV1 | undefined =>
+  aggregate.assets.find(asset => asset.id === aggregate.recipe?.sourceAssetId) ??
+  (!aggregate.recipe ? displayAssetFor(aggregate) : undefined) ??
+  aggregate.assets.find(asset => asset.id === aggregate.record.originalAssetId);
+
 export const journalStickerAssetFor = (
   aggregate: RecordAggregate,
   sticker: JournalSticker,

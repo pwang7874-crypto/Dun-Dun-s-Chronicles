@@ -21,6 +21,7 @@ import type { MainTabParamList, RootStackParamList } from '../../app/navigation'
 import { useServices } from '../../app/ServicesContext';
 import { ErrorNotice } from '../../design-system/components/ErrorNotice';
 import { PaperTexture } from '../../design-system/components/StickerBits';
+import { PocketCompanion } from '../../design-system/components/PocketCompanion';
 import { PulsingHeart } from '../../design-system/components/PulsingHeart';
 import { CuteMotionLayer, TwinklingStar } from '../../design-system/components/CuteMotionBits';
 import { useReducedMotion } from '../../design-system/components/useReducedMotion';
@@ -253,6 +254,7 @@ export const CalendarScreen = ({ navigation }: Props) => {
           </Pressable>
         </View>
 
+        <PocketCompanion mood="calendar" active={isFocused} />
         {draft ? (
           <Pressable
             accessibilityRole="button"

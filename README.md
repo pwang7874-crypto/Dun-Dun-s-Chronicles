@@ -22,6 +22,14 @@
 
 ## 安装包
 
+最新本地版本：[Android AI 进度与作品回填版（四架构，1.0.2-beta）](吨吨记-Android-AI进度与作品回填-20260906-全架构.apk)，约 362 MB / 345 MiB。同签名覆盖安装，不要先卸载。新增奶油生成进度、12 种风格大图、任务续接与作品自动回填；优化小主体原图区域读取，去掉樱花表情。160 项前端、8 项原生、25 项隔离后端相关测试通过；真实方舟联调 1 次成功。[本轮完整说明与验收边界](mobile/AI-CREATION-UPDATE.md)。
+
+以下为上一版本记录：
+
+2026-09-06 本地新版：[Android 清晰贴纸与陪伴动画版（ARM64，1.0.1-beta）](吨吨记-Android-清晰贴纸与陪伴动画-20260906-arm64.apk)，约 109 MB；与上一版测试签名一致，可覆盖安装，不要先卸载。包含离线通用主体抠图、旧贴纸用原图重做、小酱油摆件及按钮/导航动效。Jest 141 项与 Android 原生 6 项测试通过，iOS 模拟器构建通过；尚未做 Android 真机原图验收。详见 [本轮修改及验收说明](mobile/docs/2026-09-06-clear-stickers.md)。
+
+**下面的线上下载链接仍是 9 月 5 日旧包，本轮未更新网站或公开 Release。**
+
 | 平台 | 状态 |
 |---|---|
 | **Android** | [下载 APK](https://github.com/pwang7874-crypto/Dun-Dun-s-Chronicles/releases/download/v0.1.0-beta/DunDunJi-invite-sticker-20260905.apk)（测试签名，内测可用，正式发布前需更换签名） |

@@ -3,6 +3,8 @@ import { useFocusEffect, type CompositeScreenProps } from '@react-navigation/nat
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
+import { PocketCompanion } from '../../design-system/components/PocketCompanion';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { MainTabParamList, RootStackParamList } from '../../app/navigation';
@@ -21,6 +23,7 @@ type Props = CompositeScreenProps<
 >;
 
 export const ProfileScreen = ({ navigation }: Props) => {
+  const isFocused = useIsFocused();
   const { repository, creativeRepository, assetStore, now } = useServices();
   const [monthRecords, setMonthRecords] = useState<RecordAggregate[]>([]);
   const [archive, setArchive] = useState<RecordAggregate[]>([]);
@@ -83,6 +86,7 @@ export const ProfileScreen = ({ navigation }: Props) => {
           </View>
         </View>
 
+        <PocketCompanion mood="profile" active={isFocused} />
         <View style={styles.summary}>
           <View style={styles.avatarSticker}>
             <Image source={diaryGirlMascot} resizeMode="contain" style={styles.avatarImage} />

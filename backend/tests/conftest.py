@@ -40,7 +40,9 @@ class FakeSmsProvider:
 def app_factory(tmp_path: Path):
     def factory(*, ai=None, sms=None):
         settings = Settings(
-            app_env="test",
+            _env_file=None,
+            DUNDUNJI_ENV="test",
+            storage_backend="local",
             database_url=f"sqlite:///{tmp_path / 'test.sqlite3'}",
             local_storage_dir=tmp_path / "storage",
             allow_dev_auth=True,
@@ -84,4 +86,3 @@ def seed_invite_code(app, code: str = "TESTINVITE123", credits: int = 5, redeeme
         )
         db.commit()
     return code
-

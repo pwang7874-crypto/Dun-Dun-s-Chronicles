@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 
 import { colors } from '../theme';
-import { useReducedMotion } from './useReducedMotion';
+import { useMotionEnabled } from './useMotionEnabled';
 
 type MotionBitProps = {
   active?: boolean;
@@ -19,14 +19,14 @@ type MotionBitProps = {
   style?: StyleProp<ViewStyle>;
 };
 
-const useGentleLoop = (delay: number, duration: number, active: boolean) => {
+export const useGentleLoop = (delay: number, duration: number, active: boolean) => {
   const progress = useMemo(() => new Animated.Value(0), []);
-  const reducedMotion = useReducedMotion();
+  const enabled = useMotionEnabled(active);
 
   useEffect(() => {
     progress.stopAnimation();
 
-    if (reducedMotion || !active) {
+    if (!enabled) {
       progress.setValue(0.5);
       return;
     }
@@ -47,7 +47,7 @@ const useGentleLoop = (delay: number, duration: number, active: boolean) => {
 
     loop.start();
     return () => loop.stop();
-  }, [active, delay, duration, progress, reducedMotion]);
+  }, [delay, duration, progress, enabled]);
 
   return progress;
 };

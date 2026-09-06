@@ -1,5 +1,23 @@
 # 吨吨记（内部工程名 DrinkDiary）
 
+## 2026-09-06 最新更新：AI 小工坊
+
+1.0.2-beta / versionCode 3，Android 四架构安装包已在项目根目录。即时生成反馈、真实阶段进度、12 种示例图、任务续接、结果下载入库与主图回填完成；原图保留，可从 AI 小画册切换。小主体读取改为原图区域细化，樱花去掉表情。[完整变更、测试和安装说明](AI-CREATION-UPDATE.md)。此节优先于下方历史阶段说明；本轮未更新线上下载站。
+
+## 2026-09-06 本地更新：清晰纸贴与小酱油陪伴
+
+- 安卓改用随包内置的 U2NETP 通用主体识别，不再将美食误送入人物备用模型，不依赖 Google Play 服务、网络或付费 AI。只处理透明度，保留照片原始 RGB；iOS 继续使用设备端 Vision 主体识别。
+- 同时修复旧 ML Kit 备用实现的 ByteBuffer 字节序丢失问题，并拒绝异常浮点透明度；原有代码可能把正常透明度读成随机噪点。
+- 纸贴白边按显示尺寸自适应，投影变轻；移除覆盖照片的白色高光，减少图层。照片不加颗粒、不改成插画。
+- 编辑 → 今日贴页 → 每张生活照片下方新增“用原图重做贴纸”，保留原图、名称和画布位置。复制或入库失败时保留旧贴纸，清理新产生的孤立资产。
+- 日历、创作、发布、我的、生活贴页新增小酱油陪伴摆件：慢摇、悬挂小花、点击回应与小爱心；主按钮软弹按压、底部导航轻弹。遵循减少动态效果设置，后台和非当前页停止待机动画。装饰不进入分享海报。
+- 安卓版本号升为 `1.0.1-beta` / `versionCode 2`，仍使用原测试签名；本轮代码更新不等于线上下载链接已更新。
+- 原生回归：`./gradlew :app:testDebugUnitTest`（6 项），另有 `scripts/CutoutSmokeTest.java` 可在桌面调用同一模型与掩膜算法，断言照片 RGB 不被修改。
+- 本轮验收：TypeScript、ESLint、Jest 29 套件 / 141 项及 Android 原生 6 项测试通过；Android ARM64 Release 与 iOS Release 模拟器构建通过。[新版 APK](../吨吨记-Android-清晰贴纸与陪伴动画-20260906-arm64.apk)（约 109 MB）及[详细验收说明](docs/2026-09-06-clear-stickers.md)。原始问题照片和 Android 真机仍待验证。
+- 模型与运行库来源、校验值、许可证随安装包放在 `android/app/src/main/assets/models/`。抠图有能力边界：复杂遮挡、背景近似、过小主体可能识别不完整；失败时保留原图，不承诺所有图片完美抠出。
+
+技术依据：[Java ByteBuffer 字节序](https://docs.oracle.com/en/java/javase/24/docs/api/java.base/java/nio/ByteBuffer.html#duplicate())、[U2NETP 模型及校验](https://github.com/danielgatis/rembg/blob/main/rembg/sessions/u2netp.py)、[ONNX Runtime Java](https://onnxruntime.ai/docs/get-started/with-java.html)。下方旧阶段记录保留作历史参考，不能替代当前代码或本轮验收。
+
 面向喜欢记录生活、奶茶和咖啡用户的本地优先移动 App。当前客户端已进入成熟阶段：以奶油纸张、可爱贴纸和突出月历为统一视觉，免费记录与本地创作可独立使用；AI、短信账号和商店支付通过真实服务边界接入，不用 Mock 冒充成功。
 
 > 当前开发状态：18 个测试套件、63 项测试全部通过；iOS 26.5 模拟器已完成首次新手教程、四主模块、滤镜/裁切/旋转/翻转导出、海报/月刊保存、收藏、搜索、护照和失败保护的交互验收。包含最新纸质轮廓贴纸、画布触控与心跳动效的 Android 四架构 Release 测试包已保存在 [吨吨记-Android-奶油贴纸交互版-20260904.apk](../吨吨记-Android-奶油贴纸交互版-20260904.apk)；AI/账号服务端骨架已实现并通过测试，真实方舟、短信、TOS、数据库和商店配置仍需上线凭据。详见 [成熟阶段状态](docs/mature-stage-status.md)。

@@ -30,6 +30,23 @@ import { migrateDatabase } from './migrations';
 
 type SqlRow = Record<string, Scalar>;
 
+const writeAiJob = (connection: Pick<DB, 'execute'>, job: AiGenerationJob) => connection.execute(
+  `INSERT OR REPLACE INTO ai_generation_jobs (
+    id, record_id, style_id, status, output_asset_id, error_message,
+    created_at, updated_at, remote_job_id, input_asset_id
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  [job.id, job.recordId, job.styleId, job.status, job.outputAssetId ?? null,
+    job.errorMessage ?? null, job.createdAt, job.updatedAt, job.remoteJobId ?? null, job.inputAssetId ?? null],
+);
+
+const activateStudioPhoto = async (tx: Transaction, recordId: string, assetId: string, updatedAt: string) => {
+  await tx.execute(`UPDATE drink_records SET display_asset_id = ?, thumbnail_asset_id = NULL,
+    edit_recipe_id = NULL, updated_at = ? WHERE id = ?`, [assetId, updatedAt, recordId]);
+  await tx.execute(`UPDATE creative_projects SET filter_intensity = 0, brightness = 0, contrast = 0,
+    saturation = 0, warmth = 0, crop_aspect = 'original', rotation_degrees = 0, straighten_degrees = 0,
+    flip_horizontal = 0, flip_vertical = 0, updated_at = ? WHERE record_id = ?`, [updatedAt, recordId]);
+};
+
 const requiredString = (row: SqlRow, key: string): string => {
   const value = row[key];
   if (typeof value !== 'string') {
@@ -508,27 +525,40 @@ export class SQLiteDrinkRecordRepository implements DrinkRecordRepository, Creat
     );
   }
 
-  async createAiJob(job: AiGenerationJob): Promise<void> {
-    await this.updateAiJob(job);
+  async createAiJob(job: AiGenerationJob, inputAsset?: PhotoAssetV1): Promise<void> {
+    await this.database.transaction(async tx => {
+      if (inputAsset) {
+        if (inputAsset.recordId !== job.recordId || inputAsset.id !== job.inputAssetId) throw new Error('AI input ownership mismatch');
+        await insertAsset(tx, photoAssetSchema.parse(inputAsset));
+      }
+      await writeAiJob(tx, job);
+    });
   }
 
   async updateAiJob(job: AiGenerationJob): Promise<void> {
-    await this.database.execute(
-      `INSERT OR REPLACE INTO ai_generation_jobs (
-        id, record_id, style_id, status, output_asset_id, error_message,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        job.id,
-        job.recordId,
-        job.styleId,
-        job.status,
-        job.outputAssetId ?? null,
-        job.errorMessage ?? null,
-        job.createdAt,
-        job.updatedAt,
-      ],
-    );
+    await writeAiJob(this.database, job);
+  }
+
+  async completeAiJob(job: AiGenerationJob, outputAsset: PhotoAssetV1): Promise<void> {
+    const output = photoAssetSchema.parse(outputAsset);
+    if (output.recordId !== job.recordId || job.outputAssetId !== output.id || job.status !== 'succeeded') throw new Error('Invalid AI result');
+    await this.database.transaction(async tx => {
+      const found = await tx.execute('SELECT record_id, status FROM ai_generation_jobs WHERE id = ?', [job.id]);
+      if (found.rows[0]?.record_id !== job.recordId || found.rows[0]?.status === 'succeeded') throw new Error('AI job already changed');
+      await insertAsset(tx, output);
+      await writeAiJob(tx, job);
+      await activateStudioPhoto(tx, job.recordId, output.id, job.updatedAt);
+    });
+  }
+
+  async selectStudioPhoto(recordId: string, assetId: string, updatedAt: string): Promise<void> {
+    await this.database.transaction(async tx => {
+      const found = await tx.execute(`SELECT a.id FROM photo_assets a JOIN drink_records r ON r.id = a.record_id
+        WHERE a.record_id = ? AND a.id = ? AND (r.original_asset_id = a.id OR EXISTS
+          (SELECT 1 FROM ai_generation_jobs j WHERE j.record_id = r.id AND j.output_asset_id = a.id AND j.status = 'succeeded'))`, [recordId, assetId]);
+      if (!found.rows.length) throw new Error('This photo is not a saved result of this record');
+      await activateStudioPhoto(tx, recordId, assetId, updatedAt);
+    });
   }
 
   async listAiJobs(recordId: string): Promise<AiGenerationJob[]> {
@@ -541,6 +571,8 @@ export class SQLiteDrinkRecordRepository implements DrinkRecordRepository, Creat
       recordId: requiredString(row, 'record_id'),
       styleId: requiredString(row, 'style_id'),
       status: requiredString(row, 'status') as AiGenerationJob['status'],
+      remoteJobId: optionalString(row, 'remote_job_id'),
+      inputAssetId: optionalString(row, 'input_asset_id'),
       outputAssetId: optionalString(row, 'output_asset_id'),
       errorMessage: optionalString(row, 'error_message'),
       createdAt: requiredString(row, 'created_at'),
@@ -666,6 +698,30 @@ export class SQLiteDrinkRecordRepository implements DrinkRecordRepository, Creat
         sticker.id,
       ],
     );
+  }
+
+  async replaceJournalStickerCutout(stickerId: string, rawAsset: PhotoAssetV1, updatedAt: string): Promise<PhotoAssetV1 | undefined> {
+    const asset = photoAssetSchema.parse(rawAsset);
+    let oldAsset: PhotoAssetV1 | undefined;
+    await this.database.transaction(async tx => {
+      const found = await tx.execute('SELECT * FROM journal_stickers WHERE id = ?', [stickerId]);
+      const sticker = found.rows[0];
+      if (!sticker || requiredString(sticker, 'record_id') !== asset.recordId) {
+        throw new AppError('PERSISTENCE_FAILED', '这张贴纸已经变动，请返回后重试。');
+      }
+      const oldId = optionalString(sticker, 'cutout_asset_id');
+      if (oldId) {
+        const old = await tx.execute('SELECT * FROM photo_assets WHERE id = ?', [oldId]);
+        if (old.rows[0]) oldAsset = assetFromRow(old.rows[0]);
+      }
+      await insertAsset(tx, asset);
+      await tx.execute(
+        "UPDATE journal_stickers SET cutout_asset_id = ?, cutout_status = 'ready', updated_at = ? WHERE id = ?",
+        [asset.id, updatedAt, stickerId],
+      );
+      if (oldId && oldId !== asset.id) await tx.execute('DELETE FROM photo_assets WHERE id = ?', [oldId]);
+    });
+    return oldAsset;
   }
 
   async deleteJournalSticker(stickerId: string): Promise<PhotoAssetV1[]> {

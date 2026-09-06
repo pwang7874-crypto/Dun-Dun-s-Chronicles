@@ -43,17 +43,19 @@ describe('PaperCutoutSticker', () => {
     });
 
     const images = root.queryAll(instance => instance.type === 'Image');
-    // Two shadow layers, two white outline rings, the subject print and a
-    // highlight make the white sticker edge visibly thicker than a plain cutout.
-    expect(images.length).toBeGreaterThanOrEqual(20);
+    // 12 outline samples, one underprint, two shadows and the untouched photo.
+    expect(images.length).toBe(16);
     expect(images.every(image => image.props.source.uri === uri)).toBe(true);
     expect(images.every(image => image.props.accessible === false)).toBe(true);
-    expect(images.some(image => image.props.blurRadius === 6)).toBe(true);
+    expect(images.some(image => image.props.blurRadius === 4)).toBe(true);
 
     const imageStyles = images.map(image => StyleSheet.flatten(image.props.style));
     expect(imageStyles.some(style => style.tintColor === '#FFFFFF')).toBe(true);
     expect(imageStyles.some(style => style.tintColor === '#5A3E2B')).toBe(true);
     expect(imageStyles.some(style => style.tintColor === undefined)).toBe(true);
     expect(imageStyles.every(style => style.backgroundColor === 'transparent')).toBe(true);
+    // Nothing tinted or textured may cover the topmost RGB photo.
+    expect(imageStyles.at(-1)?.tintColor).toBeUndefined();
+    expect(imageStyles.at(-1)?.opacity).toBeUndefined();
   });
 });

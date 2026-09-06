@@ -247,6 +247,8 @@ export interface AiGenerationJob {
   recordId: string;
   styleId: string;
   status: AiJobStatus;
+  remoteJobId?: string;
+  inputAssetId?: string;
   outputAssetId?: string;
   errorMessage?: string;
   createdAt: string;

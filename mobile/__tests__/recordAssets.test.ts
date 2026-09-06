@@ -3,7 +3,8 @@ import type {
   PhotoAssetV1,
   RecordAggregate,
 } from '../src/domain/models';
-import { journalStickerAssetFor } from '../src/features/shared/recordAssets';
+import { journalStickerAssetFor, studioSourceAssetFor } from '../src/features/shared/recordAssets';
+import { makeFilterRecipe } from '../src/infrastructure/rendering/filters';
 
 const recordId = '11111111-1111-4111-8111-111111111111';
 const sourceAssetId = '22222222-2222-4222-8222-222222222222';
@@ -56,6 +57,16 @@ const sticker: JournalSticker = {
 };
 
 describe('journalStickerAssetFor', () => {
+  it('uses the selected AI output in creation while preserving the original pointer', () => {
+    const value = { ...aggregate, record: { ...aggregate.record, originalAssetId: sourceAssetId, displayAssetId: cutoutAssetId } };
+    expect(studioSourceAssetFor(value)?.id).toBe(cutoutAssetId);
+    expect(value.record.originalAssetId).toBe(sourceAssetId);
+  });
+  it('edits the recipe source rather than filtering the already rendered display twice', () => {
+    const value = { ...aggregate, record: { ...aggregate.record, originalAssetId: sourceAssetId, displayAssetId: cutoutAssetId },
+      recipe: makeFilterRecipe({ id: stickerId, recordId, sourceAssetId, presetId: 'cream-morning', intensity: 0.7, createdAt: timestamp }) };
+    expect(studioSourceAssetFor(value)?.id).toBe(sourceAssetId);
+  });
   it('uses the transparent asset for a ready paper sticker', () => {
     expect(journalStickerAssetFor(aggregate, sticker)?.id).toBe(cutoutAssetId);
   });

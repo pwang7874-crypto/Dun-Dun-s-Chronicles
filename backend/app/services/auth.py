@@ -155,13 +155,15 @@ class AuthService:
             invite = db.scalar(select(InviteCode).where(InviteCode.code_hash == identity))
             if not invite:
                 raise AppError("INVITE_CODE_INVALID", "邀请码不正确，请检查后重试", 422)
-            if invite.expires_at and _utc(invite.expires_at) <= now:
-                raise AppError("INVITE_CODE_EXPIRED", "这个邀请码已经过期", 422)
             if invite.redeemed_by_user_id:
                 user = db.get(User, invite.redeemed_by_user_id)
                 if not user:
                     raise AppError("INVITE_CODE_INVALID", "邀请码对应账号异常", 422)
                 return user, self._tokens.issue(user.id)
+            # 有效期只限制首次激活；已绑定的邀请码仍是内测账号的登录凭证。
+            # 重新登录不会再次赠送额度，也不延长会员或生成次数。
+            if invite.expires_at and _utc(invite.expires_at) <= now:
+                raise AppError("INVITE_CODE_EXPIRED", "这个邀请码尚未激活且已经过期", 422)
 
             # 首次使用：创建账号并原子兑换（防止并发重复兑换）。
             user = User(
@@ -187,6 +189,15 @@ class AuthService:
             db.commit()
             db.refresh(user)
             return user, self._tokens.issue(user.id)
+        except IntegrityError:
+            # 两个设备同时首次登录：唯一约束的失败方回到已经绑定的账号，
+            # 不抛出 500，也不重发免费次数。必须先回滚失败的事务。
+            db.rollback()
+            fresh = db.scalar(select(InviteCode).where(InviteCode.code_hash == identity))
+            existing = db.get(User, fresh.redeemed_by_user_id) if fresh and fresh.redeemed_by_user_id else None
+            if not existing:
+                raise
+            return existing, self._tokens.issue(existing.id)
         except AppError:
             raise
         finally:

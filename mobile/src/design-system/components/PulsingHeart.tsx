@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 
 import { colors } from '../theme';
-import { useReducedMotion } from './useReducedMotion';
+import { useMotionEnabled } from './useMotionEnabled';
 
 export type PulsingHeartProps = {
   /** The rendered square and glyph size in points. */
@@ -47,12 +47,12 @@ export const PulsingHeart = ({
   accessibilityLabel,
 }: PulsingHeartProps) => {
   const progress = useMemo(() => new Animated.Value(0), []);
-  const reducedMotion = useReducedMotion();
+  const motionEnabled = useMotionEnabled(active);
 
   useEffect(() => {
     progress.stopAnimation();
 
-    if (reducedMotion || !active) {
+    if (!motionEnabled) {
       // Keep the resting outline rather than freezing on a bright red frame.
       progress.setValue(0);
       return;
@@ -101,7 +101,7 @@ export const PulsingHeart = ({
 
     loop.start();
     return () => loop.stop();
-  }, [active, duration, progress, reducedMotion]);
+  }, [duration, progress, motionEnabled]);
 
   const scale = progress.interpolate({
     inputRange: [0, 0.32, 0.82, 1],

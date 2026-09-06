@@ -70,6 +70,7 @@ describe('SQLite migrations', () => {
         expect.arrayContaining([9]),
         expect.arrayContaining([10]),
         expect.arrayContaining([11]),
+        expect.arrayContaining([12]),
       ]),
     );
   });
@@ -97,7 +98,7 @@ describe('SQLite migrations', () => {
 
     await migrateDatabase(database);
 
-    expect(database.transaction).toHaveBeenCalledTimes(10);
+    expect(database.transaction).toHaveBeenCalledTimes(11);
     expect(transactionExecuted).toEqual(
       expect.arrayContaining([
         expect.stringContaining('ADD COLUMN sugar_level'),
@@ -106,6 +107,8 @@ describe('SQLite migrations', () => {
         expect.stringContaining('rotation_degrees'),
         expect.stringContaining('onboarding_completed_at'),
         expect.stringContaining('canvas_elements_json'),
+        expect.stringContaining('ADD COLUMN remote_job_id'),
+        expect.stringContaining('ADD COLUMN input_asset_id'),
       ]),
     );
   });

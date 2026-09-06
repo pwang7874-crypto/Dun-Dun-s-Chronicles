@@ -2,7 +2,13 @@ import type { DB, Transaction } from '@op-engineering/op-sqlite';
 
 import { AppError } from '../../../domain/errors';
 
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
+
+const createV12 = async (tx: Transaction): Promise<void> => {
+  await tx.execute('ALTER TABLE ai_generation_jobs ADD COLUMN remote_job_id TEXT');
+  await tx.execute('ALTER TABLE ai_generation_jobs ADD COLUMN input_asset_id TEXT');
+  await tx.execute('INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)', [12, new Date().toISOString()]);
+};
 
 const createV1 = async (tx: Transaction): Promise<void> => {
   await tx.execute(`
@@ -379,6 +385,9 @@ export const migrateDatabase = async (database: DB): Promise<void> => {
     }
     if (currentVersion < 11) {
       await migrateV11(database);
+    }
+    if (currentVersion < 12) {
+      await database.transaction(createV12);
     }
   } catch (error) {
     throw new AppError(

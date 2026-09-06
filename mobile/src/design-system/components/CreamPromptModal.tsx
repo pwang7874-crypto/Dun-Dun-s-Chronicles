@@ -54,9 +54,9 @@ export const CreamPromptModal = ({
       <View style={styles.card}>
         <View style={styles.tape} />
         <View style={[styles.softBlob, tone === 'celebrate' && styles.celebrateBlob]} />
-        <TwinklingStar color={colors.blush} size={19} style={styles.starOne} />
-        <TwinklingStar color={colors.butter} delay={720} size={13} style={styles.starTwo} />
-        <WobblingCharm kind="flower" delay={400} style={styles.charm} />
+        <TwinklingStar active={visible} color={colors.blush} size={19} style={styles.starOne} />
+        <TwinklingStar active={visible} color={colors.butter} delay={720} size={13} style={styles.starTwo} />
+        <WobblingCharm active={visible} kind="flower" delay={400} style={styles.charm} />
 
         <View style={styles.mascotBadge}>
           <Image

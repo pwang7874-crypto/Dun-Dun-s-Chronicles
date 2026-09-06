@@ -1,6 +1,7 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, Text, View } from 'react-native';
+import { useMotionEnabled } from '../design-system/components/useMotionEnabled';
 
 import { colors } from '../design-system/theme';
 import { CalendarScreen } from '../features/calendar/CalendarScreen';
@@ -35,7 +36,21 @@ const TabIcon = ({
   name,
   color,
   focused,
-}: TabIconProps & { name: keyof MainTabParamList }) => name === 'Profile' ? (
+}: TabIconProps & { name: keyof MainTabParamList }) => {
+  const progress = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  const enabled = useMotionEnabled();
+  useEffect(() => {
+    if (!enabled) { progress.setValue(focused ? 1 : 0); return; }
+    const transition = Animated.spring(progress, { toValue: focused ? 1 : 0, damping: 8, stiffness: 210, mass: 0.55, useNativeDriver: true, isInteraction: false });
+    transition.start();
+    return () => transition.stop();
+  }, [focused, enabled, progress]);
+  return <Animated.View accessibilityElementsHidden style={[styles.iconWell, focused && styles.warmWell, {
+    transform: [
+      { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 1.09] }) },
+      { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [0, -2] }) },
+    ],
+  }]}>{name === 'Profile' ? (
   <View accessibilityElementsHidden style={[styles.personIcon, focused && styles.iconActive]}>
     <View style={[styles.personHead, { borderColor: color }]} />
     <View style={[styles.personBody, { borderColor: color }]} />
@@ -47,7 +62,8 @@ const TabIcon = ({
   >
     {icons[name]}
   </Text>
-);
+  )}</Animated.View>;
+};
 
 const tabIcons: Record<
   keyof MainTabParamList,
@@ -81,6 +97,8 @@ export const MainTabNavigator = () => (
 );
 
 const styles = StyleSheet.create({
+  iconWell: { width: 37, height: 27, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  warmWell: { backgroundColor: colors.butterSoft },
   bar: {
     height: 78,
     paddingTop: 7,

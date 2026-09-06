@@ -82,8 +82,8 @@ android {
         applicationId "com.drinkdiary.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 3
+        versionName "1.0.2-beta"
     }
     signingConfigs {
         debug {
@@ -108,6 +108,10 @@ android {
 }
 
 dependencies {
+    // Bundled generic subject segmentation: works offline without Play Services.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.24.3")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
+    testImplementation("junit:junit:4.13.2")
     // Required for the backported Android Photo Picker on API 24-29.
     implementation("androidx.activity:activity:1.13.0")
 
@@ -120,3 +124,14 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+tasks.register("verifyOfflineCutoutModel") {
+    def model = file("src/main/assets/models/u2netp.onnx")
+    inputs.file(model)
+    doLast {
+        if (!model.exists() || java.security.MessageDigest.getInstance("MD5").digest(model.bytes).encodeHex().toString() != "8e83ca70e441ab06c318d82300c84806") {
+            throw new GradleException("Offline cutout model missing or corrupted. See src/main/assets/models/NOTICE.md")
+        }
+    }
+}
+tasks.named("preBuild").configure { dependsOn("verifyOfflineCutoutModel") }

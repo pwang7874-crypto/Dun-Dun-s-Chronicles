@@ -1,0 +1,4 @@
+android/**/build/
+ios/build/
+ios/Pods/
+.toolchains/

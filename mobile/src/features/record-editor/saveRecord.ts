@@ -24,6 +24,7 @@ interface SaveRecordDependencies {
 
 interface SaveRecordInput {
   aggregate: RecordAggregate;
+  sourceAssetId?: string;
   form: RecordFormValues;
   intensity: number;
   presetId?: FilterPresetId;
@@ -39,8 +40,9 @@ export const saveRecord = async (
   const { aggregate, form, intensity, presetId = 'cream-morning', edits } = input;
   const { repository, assetStore, imageRenderer, now, createId } = dependencies;
   const original = aggregate.assets.find(
-    asset => asset.id === aggregate.record.originalAssetId,
+    asset => asset.id === (input.sourceAssetId ?? aggregate.record.originalAssetId),
   );
+  if (input.sourceAssetId && (!original || original.recordId !== aggregate.record.id)) throw new Error('Selected source is missing');
   if (aggregate.record.originalAssetId && !original) {
     throw new Error('Original asset is missing from the aggregate');
   }

@@ -2,8 +2,8 @@ import Slider from '@react-native-community/slider';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useIsFocused, type CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { MainTabParamList, RootStackParamList } from '../../app/navigation';
@@ -11,7 +11,9 @@ import { useServices } from '../../app/ServicesContext';
 import { PaperTexture } from '../../design-system/components/StickerBits';
 import { PaperCutoutSticker } from '../../design-system/components/PaperCutoutSticker';
 import { CuteMotionLayer } from '../../design-system/components/CuteMotionBits';
+import { PocketCompanion } from '../../design-system/components/PocketCompanion';
 import { CreamPromptModal } from '../../design-system/components/CreamPromptModal';
+import { PrimaryButton } from '../../design-system/components/Buttons';
 import { colors, typography } from '../../design-system/theme';
 import {
   createCatalogCanvasElement,
@@ -20,13 +22,15 @@ import {
   removeCanvasElement,
   restorePhotoCanvasElement,
 } from '../../domain/creativeCanvas';
-import type { CreativeProject, JournalSticker, RecordAggregate, StudioTool } from '../../domain/models';
+import type { AiGenerationJob, CreativeProject, JournalSticker, PhotoAssetV1, RecordAggregate, StudioTool } from '../../domain/models';
 import { filterCatalog } from '../../infrastructure/rendering/filters';
 import { AiArtError } from '../../infrastructure/network/HttpAiArtService';
 import { newId } from '../../shared/id';
 import { saveRecord } from '../record-editor/saveRecord';
-import { archiveEnd, archiveStart, displayAssetFor, journalStickerAssetFor } from '../shared/recordAssets';
-import { aiStyleCategories, aiStyles, type AiStyleFilter } from './aiStyleCatalog';
+import { archiveEnd, archiveStart, studioSourceAssetFor, journalStickerAssetFor } from '../shared/recordAssets';
+import { aiStyleCategories, aiStylePreviews, aiStyles, type AiStyleFilter } from './aiStyleCatalog';
+import { AiCreationIssue, continueAiCreation, prepareAiCreation, type AiCreationPhase } from './aiCreation';
+import { AiCreationProgress } from './AiCreationProgress';
 import { StudioImagePreview } from './StudioImagePreview';
 import { cuteStickers, stickerSymbol } from './stickerCatalog';
 import { journalLayouts } from './layoutCatalog';
@@ -155,6 +159,21 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
   const [canvasSize, setCanvasSize] = useState({ width: 360, height: 346 });
   const [selectedCanvasItem, setSelectedCanvasItem] = useState<string>('photo');
   const [finishNotice, setFinishNotice] = useState<'success' | 'error' | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const aiBusyRef = useRef(false);
+  const [aiPhase, setAiPhase] = useState<AiCreationPhase>('preparing');
+  const [aiStartedAt, setAiStartedAt] = useState(0);
+  const [progressOpen, setProgressOpen] = useState(false);
+  const [aiJobs, setAiJobs] = useState<AiGenerationJob[]>([]);
+  const [activeAiStyle, setActiveAiStyle] = useState(selectedAi);
+  const [activeAiImageUri, setActiveAiImageUri] = useState<string>();
+  const [aiNotice, setAiNotice] = useState<{ code: string; pending?: boolean; message?: string; job?: AiGenerationJob } | null>(null);
+  const [previewStyle, setPreviewStyle] = useState<string | null>(null);
+  const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const activeRecordId = useRef<string | undefined>(undefined);
+  const mounted = useRef(true);
+  useEffect(() => { activeRecordId.current = aggregate?.record.id; }, [aggregate?.record.id]);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const filterSnapshot = useRef<CreativeProject | null>(null);
   const projectSaveQueue = useRef<Promise<void>>(Promise.resolve());
 
@@ -179,6 +198,7 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
     setUndoStack([]);
     setRedoStack([]);
     if (latest) {
+      setAiJobs(await creativeRepository.listAiJobs(latest.record.id));
       const stored = await creativeRepository.getProject(latest.record.id);
       const synced = syncProjectFromRecord(latest, stored, now());
       const hydrated = {
@@ -194,6 +214,7 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
       );
     } else {
       setProject(null);
+      setAiJobs([]);
     }
   }, [creativeRepository, now, queueProjectSave, repository, route.params?.recordId]);
 
@@ -201,12 +222,11 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
     load().catch(() => undefined);
   }, [load]));
 
-  // Always preview from the immutable original. Reopening the editor must not
-  // apply rotations or flips a second time to an already rendered asset.
-  const asset = aggregate
-    ? aggregate.assets.find(item => item.id === aggregate.record.originalAssetId) ?? displayAssetFor(aggregate)
-    : undefined;
+  // The selected AI result is an immutable editing source too; original photo remains separate.
+  const asset = aggregate ? studioSourceAssetFor(aggregate) : undefined;
   const imageUri = asset ? assetStore.resolveUri(asset) : undefined;
+  const pendingAiJob = aiJobs.find(job => job.status === 'queued' || job.status === 'processing');
+  const completedAiJobs = aiJobs.filter(job => job.status === 'succeeded' && job.outputAssetId);
   const visibleAiStyles = useMemo(() => {
     const filtered = aiFilter === '全部'
       ? aiStyles
@@ -226,7 +246,7 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
         : '先点选一个元素';
 
   const updateProject = useCallback((patch: Partial<CreativeProject>) => {
-    if (!project) {
+    if (!project || aiBusyRef.current) {
       return;
     }
     const next = { ...project, ...patch, updatedAt: now().toISOString() };
@@ -370,6 +390,7 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
       await queueProjectSave({ ...project, updatedAt: now().toISOString() });
       await saveRecord({
         aggregate,
+        sourceAssetId: asset?.id,
         intensity: project.filterIntensity,
         presetId: project.filterPresetId,
         edits: {
@@ -407,52 +428,76 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
     }
   };
 
-  const startAi = async () => {
-    if (!aggregate || !imageUri) {
+  const startAi = async (resumeJob?: AiGenerationJob) => {
+    if (aiBusyRef.current) { setProgressOpen(true); return; }
+    if (!aggregate || !asset) {
       navigation.navigate('PhotoSource');
       return;
     }
     if (!aiArtService.isConfigured) {
-      Alert.alert(
-        '还差 AI 服务端',
-        '界面、风格参数、任务表和失败返还逻辑已经就位。请提供火山引擎服务端地址与模型信息后，即可真实生成；密钥不会放进手机端。',
-      );
+      setAiNotice({ code: 'AI_SERVICE_NOT_CONFIGURED', message: 'AI 小工坊暂时没有连接上，原图和免费创作仍然可以使用。' });
       return;
     }
-    const createdAt = now().toISOString();
-    const job = {
-      id: newId(), recordId: aggregate.record.id, styleId: selectedAi,
-      status: 'queued' as const, createdAt, updatedAt: createdAt,
-    };
-    await creativeRepository.createAiJob(job);
+    // Lock synchronously, before the first await, so rapid taps cannot spend multiple credits.
+    aiBusyRef.current = true;
+    setAiBusy(true); setAiPhase('preparing'); setAiStartedAt(Date.now()); setProgressOpen(true); setAiNotice(null);
+    setActiveAiStyle(resumeJob?.styleId ?? pendingAiJob?.styleId ?? selectedAi);
+    setActiveAiImageUri(assetStore.resolveUri(asset));
+    const recordId = aggregate.record.id;
+    let completed = false;
+    const deps = { aiArtService, creativeRepository, assetStore, imageRenderer, now, createId: newId };
     try {
-      await aiArtService.createGeneration({
-        jobId: job.id, recordId: job.recordId, styleId: job.styleId, imageUri,
-      });
-      await creativeRepository.updateAiJob({ ...job, status: 'processing', updatedAt: now().toISOString() });
-      Alert.alert('开始创作了', '可以离开这一页，完成后会出现在历史海报里。');
-    } catch (error) {
-      const code = error instanceof AiArtError ? error.code : 'AI_SERVICE_UNKNOWN';
-      await creativeRepository.updateAiJob({
-        ...job,
-        status: 'failed',
-        errorMessage: error instanceof AiArtError ? error.message : '服务暂时不可用',
-        updatedAt: now().toISOString(),
-      });
-      if (code === 'AI_QUOTA_EXHAUSTED') {
-        Alert.alert('需要邀请码', 'AI 创作需要邀请码次数。兑换邀请码后，就能开始创作。', [
-          { text: '稍后再说', style: 'cancel' },
-          { text: '去兑换', onPress: () => navigation.navigate('Membership') },
-        ]);
-      } else if (code === 'AI_AUTH_REQUIRED') {
-        Alert.alert('请先登录', 'AI 创作需要登录账号。登录后本机记录仍会保留。', [
-          { text: '稍后再说', style: 'cancel' },
-          { text: '去登录', onPress: () => navigation.navigate('Account') },
-        ]);
+      await projectSaveQueue.current;
+      let job = resumeJob ?? pendingAiJob;
+      let input: PhotoAssetV1 | undefined;
+      if (job) {
+        input = aggregate.assets.find(item => item.id === (job!.inputAssetId ?? aggregate.record.originalAssetId));
+        if (!input) throw new AiCreationIssue('AI_INPUT_MISSING', true, job, '上次任务的底稿暂时找不到，原图不会被修改。');
       } else {
-        Alert.alert('这次没有生成', '没有扣除创作次数，请稍后再试。');
+        const prepared = await prepareAiCreation(recordId, selectedAi, asset, deps);
+        job = prepared.job; input = prepared.input;
       }
+      setActiveAiStyle(job.styleId);
+      setActiveAiImageUri(assetStore.resolveUri(input));
+      setAiJobs(current => [job!, ...current.filter(item => item.id !== job!.id)]);
+      const output = await continueAiCreation(job, input, deps, phase => { if (mounted.current) setAiPhase(phase); });
+      completed = true;
+      if (!mounted.current || activeRecordId.current !== recordId) return;
+      const latest = await repository.findById(recordId);
+      const stored = await creativeRepository.getProject(recordId);
+      if (stored) await queueProjectSave({ ...stored,
+        canvasElements: restorePhotoCanvasElement(stored, hydrateCreativeCanvasElements(stored, latest?.journalStickers)),
+        updatedAt: now().toISOString() });
+      await load();
+      setAiNotice({ code: 'SUCCESS', message: output.id });
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    } catch (error) {
+      if (!mounted.current || activeRecordId.current !== recordId) return;
+      if (completed) {
+        setAiNotice({ code: 'SUCCESS', message: '作品已经保存，重新进入创作页即可查看。' });
+        return;
+      }
+      const code = error instanceof AiArtError || error instanceof AiCreationIssue ? error.code : 'AI_PREPARE_FAILED';
+      setAiNotice({ code, pending: error instanceof AiCreationIssue && error.pending,
+        job: error instanceof AiCreationIssue ? error.job : undefined,
+        message: error instanceof AiArtError || error instanceof AiCreationIssue ? error.message : '照片底稿暂时没有准备好，原图还在。' });
+      const latest = await repository.findById(recordId).catch(() => null);
+      if (activeRecordId.current === recordId && latest) {
+        setAggregate(latest);
+        setAiJobs(await creativeRepository.listAiJobs(recordId).catch(() => aiJobs));
+      }
+    } finally {
+      aiBusyRef.current = false;
+      if (mounted.current) { setAiBusy(false); setProgressOpen(false); }
     }
+  };
+
+  const chooseAiPhoto = async (assetId: string) => {
+    if (!aggregate || aiBusyRef.current) return;
+    await projectSaveQueue.current;
+    await creativeRepository.selectStudioPhoto(aggregate.record.id, assetId, now().toISOString());
+    await load();
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
   };
 
   const toolOptions = useMemo(() => {
@@ -631,19 +676,20 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <PaperTexture />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.topBar}>
           <Pressable accessibilityLabel="回到日历" accessibilityHint="长按撤销" onLongPress={() => restoreProject('undo')} onPress={() => navigation.navigate('Diary')} style={styles.backButton}>
             <Text style={styles.backText}>‹</Text>
           </Pressable>
-          <Text style={styles.topTitle} />
+          <Text style={styles.topTitle}>今天，贴一点可爱</Text>
           <View style={styles.topActions}>
-            <Pressable accessibilityHint="长按重做" onLongPress={() => restoreProject('redo')} disabled={saving} onPress={() => finishFreeEdit().catch(() => undefined)} style={styles.doneButton}>
+            <Pressable accessibilityHint="长按重做" onLongPress={() => restoreProject('redo')} disabled={saving || aiBusy} onPress={() => finishFreeEdit().catch(() => undefined)} style={styles.doneButton}>
               <Text style={styles.doneText}>{saving ? '保存中' : '完成'}</Text>
             </Pressable>
           </View>
         </View>
 
+        <PocketCompanion mood="create" active={isFocused} />
         <View
           onLayout={event => setCanvasSize(event.nativeEvent.layout)}
           style={[styles.canvas, layoutCanvasStyle(project?.layoutId)]}
@@ -670,7 +716,7 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
             .map(element => {
               const selected = selectedCanvasItem === element.id;
               const commonProps = {
-                active: isFocused && !saving,
+                active: isFocused && !saving && !aiBusy,
                 canvasWidth: canvasSize.width,
                 canvasHeight: canvasSize.height,
                 selected,
@@ -776,7 +822,7 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
           ) : null}
         </View>
         <Text style={styles.canvasGuide}>✦ 主图与每张贴纸都能移动、缩放、旋转、删除（模板底纸固定）</Text>
-        <View style={styles.elementControls}>
+        <View pointerEvents={aiBusy || saving ? 'none' : 'auto'} style={styles.elementControls}>
           <View style={styles.elementControlHeading}>
             <Text style={styles.elementControlEyebrow}>正在调整</Text>
             <Text numberOfLines={1} style={styles.elementControlName}>{selectedCanvasLabel}</Text>
@@ -813,7 +859,11 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
           ><Text style={styles.elementDeleteText}>删除</Text></Pressable>
         </View>
 
-        <View style={styles.toolPanel}>
+        {asset && aggregate && asset.id !== aggregate.record.originalAssetId ? <View style={styles.resultLabel}>
+          <Text style={styles.resultLabelText}>✦ AI 作品已放到主图 · 原图仍保留</Text>
+          <Pressable disabled={aiBusy} onPress={() => chooseAiPhoto(aggregate.record.originalAssetId!).catch(() => undefined)} style={styles.resultSwitch}><Text style={styles.resultSwitchText}>切回原图</Text></Pressable>
+        </View> : null}
+        <View pointerEvents={aiBusy ? 'none' : 'auto'} style={styles.toolPanel}>
           <View style={styles.toolRow}>
             {tools.map(tool => (
               <Pressable key={tool.id} onPress={() => {
@@ -832,7 +882,7 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
         <View style={styles.aiHeading}>
           <View>
             <Text style={styles.aiTitle}>AI 风格选择 <Text style={styles.aiMember}>（邀请码内测）</Text></Text>
-            <Text style={styles.aiSub}>为这张照片推荐 2 种 · 生成失败不扣次数</Text>
+            <Text style={styles.aiSub}>12 种风格灵感 · 成功后放进主图</Text>
           </View>
           <Pressable onPress={() => setShowAllAi(value => !value)} style={styles.aiMore}>
             <Text style={styles.aiMoreText}>{showAllAi ? '收起' : '全部 12 种'}</Text>
@@ -859,9 +909,9 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
         ) : null}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.aiRail}>
           {visibleAiStyles.map((item, index) => (
-            <Pressable key={item.id} onPress={() => setSelectedAi(item.id)} style={[styles.aiCard, { backgroundColor: item.tone }, selectedAi === item.id && styles.aiCardSelected]}>
+            <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`选择${item.name}风格`} accessibilityHint="长按查看大图示例" disabled={aiBusy} onLongPress={() => setPreviewStyle(item.id)} onPress={() => setSelectedAi(item.id)} style={[styles.aiCard, { backgroundColor: item.tone }, selectedAi === item.id && styles.aiCardSelected]}>
               <View style={[styles.aiPreview, index % 2 === 0 ? styles.turnLeft : styles.turnRight]}>
-                {imageUri ? <Image source={{ uri: imageUri }} style={styles.aiImage} /> : <Text style={styles.aiPlaceholder}>☕︎</Text>}
+                <Image source={aiStylePreviews[item.id]} style={styles.aiImage} accessibilityLabel={`${item.name}风格示意图`} />
               </View>
               <Text style={styles.aiName}>{item.name}</Text>
               <Text style={styles.aiNote}>{item.note}</Text>
@@ -869,27 +919,47 @@ export const CreateStudioScreen = ({ navigation, route }: Props) => {
             </Pressable>
           ))}
         </ScrollView>
-        <View style={styles.aiIntensityRow}>
-          <Text style={styles.aiIntensityLabel}>风格强度</Text>
-          <Text style={styles.aiIntensityStar}>★</Text>
-          <Slider
-            accessibilityLabel="AI 风格强度"
-            style={styles.aiIntensitySlider}
-            minimumValue={0}
-            maximumValue={1}
-            value={project?.filterIntensity ?? 0.75}
-            minimumTrackTintColor={colors.creamDeep}
-            maximumTrackTintColor={colors.line}
-            thumbTintColor={colors.card}
-            onValueChange={value => previewAdjustment('filterIntensity', value)}
-            onSlidingComplete={value => persistAdjustment('filterIntensity', value)}
-          />
-          <Text style={styles.aiIntensityValue}>{Math.round((project?.filterIntensity ?? 0.75) * 100)}%</Text>
-        </View>
-        <Pressable onPress={() => startAi().catch(() => undefined)} style={styles.aiButton}>
-          <Text style={styles.aiButtonText}>用「{aiStyles.find(item => item.id === selectedAi)?.name}」创作 · 1 次创作</Text>
-        </Pressable>
+        <View style={styles.previewNoteRow}><Text style={styles.previewNote}>图片为风格示意，实际结果因原图而异</Text><Pressable onPress={() => setPreviewStyle(selectedAi)} style={styles.resultSwitch}><Text style={styles.resultSwitchText}>看大图 ↗</Text></Pressable></View>
+        <PrimaryButton busy={aiBusy} accessibilityLabel="开始 AI 创作" onPress={() => startAi().catch(() => undefined)} label={pendingAiJob ? '继续上次创作 · 不重复新建任务' : `用「${aiStyles.find(item => item.id === selectedAi)?.name}」创作 · 1 次`} />
+        {!pendingAiJob && aiJobs.some(job => job.status === 'failed' && !job.inputAssetId) ? <Pressable accessibilityRole="button" disabled={aiBusy} style={styles.resultSwitch} onPress={() => startAi(aiJobs.find(job => job.status === 'failed' && !job.inputAssetId)).catch(() => undefined)}>
+          <Text style={styles.previewNote}>找回旧版未收到的作品 · 沿用原任务，不新建</Text>
+        </Pressable> : null}
+        {aiBusy ? <Pressable onPress={() => setProgressOpen(true)} style={styles.progressPill}><Text style={styles.progressPillText}>小酱油正在创作 · 点这里查看进度 →</Text></Pressable> : null}
+        {completedAiJobs.length ? <View style={styles.aiHistory}>
+          <Text style={styles.aiHistoryTitle}>已经画好的小快乐</Text><Text style={styles.previewNote}>点一张，放回主图 · 每张结果都在本机保存</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.aiHistoryRail}>
+            {completedAiJobs.map(job => {
+              const output = aggregate?.assets.find(item => item.id === job.outputAssetId);
+              return output ? <Pressable key={job.id} disabled={aiBusy} onPress={() => chooseAiPhoto(output.id).catch(() => undefined)} style={styles.aiHistoryCard}>
+                <Image source={{ uri: assetStore.resolveUri(output) }} style={styles.aiHistoryImage} /><Text style={styles.aiHistoryName}>{aiStyles.find(item => item.id === job.styleId)?.name ?? 'AI 作品'}</Text>
+              </Pressable> : null;
+            })}
+          </ScrollView>
+        </View> : null}
       </ScrollView>
+      <AiCreationProgress visible={aiBusy && progressOpen && isFocused} phase={aiPhase} startedAt={aiStartedAt} styleName={aiStyles.find(item => item.id === activeAiStyle)?.name ?? '奶油海报'} preview={aiStylePreviews[activeAiStyle]!} imageUri={activeAiImageUri} onHide={() => setProgressOpen(false)} />
+      <CreamPromptModal visible={Boolean(aiNotice) && isFocused} tone={aiNotice?.code === 'SUCCESS' ? 'celebrate' : 'warm'}
+        title={aiNotice?.code === 'SUCCESS' ? '新作品，贴好啦 ✦' : aiNotice?.code === 'AI_AUTH_REQUIRED' ? '登录后，一起画点可爱' : aiNotice?.code === 'AI_QUOTA_EXHAUSTED' ? '灵感需要补充一点点' : aiNotice?.pending ? '还在等这一份小惊喜' : '这次，差一点点画好'}
+        body={aiNotice?.code === 'SUCCESS' ? '作品已经收进本机，并同步到创作主图。你可以继续排版，也可以随时切回原图。' : aiNotice?.message ?? '原图和刚才的编辑都还在，稍后再试试吧。'}
+        note={aiNotice?.code === 'SUCCESS' ? '♡ 创作页下方也能找到历史作品' : aiNotice?.pending ? '保留同一次任务，继续收取不会重新绘制已完成作品' : '♡ 原图还在，不用重新上传'}
+        confirmLabel={aiNotice?.code === 'SUCCESS' ? '看看新作品' : aiNotice?.code === 'AI_AUTH_REQUIRED' ? '去登录' : aiNotice?.code === 'AI_QUOTA_EXHAUSTED' ? '去兑换' : aiNotice?.pending ? '继续收取' : '再试一次'}
+        cancelLabel={aiNotice?.code === 'SUCCESS' ? '继续挑风格' : '先留在这里'} onCancel={() => setAiNotice(null)} onConfirm={() => {
+          const notice = aiNotice; setAiNotice(null);
+          if (notice?.code === 'SUCCESS') scrollRef.current?.scrollTo({ y: 0, animated: true });
+          else if (notice?.code === 'AI_AUTH_REQUIRED') navigation.navigate('Account');
+          else if (notice?.code === 'AI_QUOTA_EXHAUSTED') navigation.navigate('Membership');
+          else startAi(notice?.pending ? notice.job : undefined).catch(() => undefined);
+        }} />
+      <Modal visible={Boolean(previewStyle)} transparent animationType="fade" onRequestClose={() => setPreviewStyle(null)}>
+        <View style={styles.exampleBackdrop}><View style={styles.exampleCard}>
+          <Text style={styles.exampleTitle}>{aiStyles.find(item => item.id === previewStyle)?.name}</Text>
+          {previewStyle ? <Image source={aiStylePreviews[previewStyle]} resizeMode="contain" style={styles.exampleImage} /> : null}
+          <Text style={styles.exampleDescription}>{aiStyles.find(item => item.id === previewStyle)?.note}</Text>
+          <Text style={styles.previewNote}>风格示意图 · 不代表你的照片生成结果</Text>
+          <PrimaryButton label="就试试这个风格" onPress={() => { if (previewStyle && !aiBusy) setSelectedAi(previewStyle); setPreviewStyle(null); }} />
+          <Pressable accessibilityRole="button" style={styles.resultSwitch} onPress={() => setPreviewStyle(null)}><Text style={styles.exampleDescription}>先看看其他风格</Text></Pressable>
+        </View></View>
+      </Modal>
       <CreamPromptModal
         visible={finishNotice === 'success'}
         tone="celebrate"
@@ -944,6 +1014,25 @@ const canvasElementZStyle = (zIndex: number, selected: boolean) => ({
   zIndex: selected ? 10_000 : Math.min(9_999, Math.max(1, zIndex)),
 });
 const styles = StyleSheet.create({
+  resultLabel: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF3DA', borderRadius: 16, paddingLeft: 12 },
+  resultLabelText: { color: colors.cocoa, fontSize: 10, flex: 1 },
+  resultSwitch: { paddingHorizontal: 12, minHeight: 44, justifyContent: 'center' },
+  resultSwitchText: { color: colors.creamDeep, fontSize: 11, fontWeight: '700' },
+  previewNoteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  previewNote: { color: colors.inkMuted, fontSize: 10, lineHeight: 17, flexShrink: 1 },
+  progressPill: { backgroundColor: colors.butterSoft, borderRadius: 16, padding: 16 },
+  progressPillText: { color: colors.cocoa, fontSize: 12, textAlign: 'center' },
+  aiHistory: { marginTop: 20, gap: 8 },
+  aiHistoryTitle: { color: colors.ink, fontSize: 17, fontWeight: '700' },
+  aiHistoryRail: { gap: 12, paddingVertical: 8 },
+  aiHistoryCard: { padding: 6, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.line },
+  aiHistoryImage: { width: 120, height: 120, borderRadius: 9 },
+  aiHistoryName: { textAlign: 'center', color: colors.cocoa, fontSize: 11, paddingVertical: 8 },
+  exampleBackdrop: { flex: 1, padding: 22, justifyContent: 'center', backgroundColor: 'rgba(58,43,32,0.42)' },
+  exampleCard: { padding: 20, gap: 12, borderRadius: 28, backgroundColor: '#FFFBF2', alignSelf: 'center', width: '100%', maxWidth: 420 },
+  exampleTitle: { fontSize: 21, fontWeight: '700', color: colors.ink, textAlign: 'center' },
+  exampleImage: { width: '100%', aspectRatio: 1, borderRadius: 18 },
+  exampleDescription: { fontSize: 13, textAlign: 'center', color: colors.cocoa },
   safeArea: { flex: 1, backgroundColor: colors.paper },
   content: { paddingHorizontal: 18, paddingTop: 4, paddingBottom: 30, gap: 10 },
   topBar: { height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

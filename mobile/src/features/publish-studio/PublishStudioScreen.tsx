@@ -15,6 +15,7 @@ const { captureRef: captureViewRef } = require('react-native-view-shot') as {
 import type { MainTabParamList, RootStackParamList } from '../../app/navigation';
 import { useServices } from '../../app/ServicesContext';
 import { CuteMotionLayer, TwinklingStar, WobblingCharm } from '../../design-system/components/CuteMotionBits';
+import { PocketCompanion } from '../../design-system/components/PocketCompanion';
 import { PaperTexture } from '../../design-system/components/StickerBits';
 import { PaperCutoutSticker } from '../../design-system/components/PaperCutoutSticker';
 import { colors, radii, typography } from '../../design-system/theme';
@@ -340,6 +341,7 @@ export const PublishStudioScreen = ({ navigation, route }: Props) => {
             <WobblingCharm active={isFocused} delay={700} kind="flower" size={11} style={styles.shareHeroCharm} />
           </View>
 
+          <PocketCompanion mood="publish" active={isFocused} />
           <View style={styles.posterShell}>
             <View
               ref={posterRef}

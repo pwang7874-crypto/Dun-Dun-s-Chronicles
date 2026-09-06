@@ -3,6 +3,7 @@ import {
   isSupported,
   type SubjectCutout,
 } from 'react-native-image-analysis';
+import { NativeModules, Platform } from 'react-native';
 
 import { AppError } from '../../domain/errors';
 import type { ImportedPhoto } from '../../domain/models';
@@ -18,6 +19,9 @@ const toImportedPhoto = (cutout: SubjectCutout): ImportedPhoto => ({
 
 export class DeviceSubjectCutoutService implements SubjectCutoutService {
   get isSupported(): boolean {
+    if (Platform.OS === 'android') {
+      return typeof NativeModules.DundunOfflineCutout?.extractSubject === 'function';
+    }
     try {
       return isSupported().subjectLifting;
     } catch {
@@ -33,11 +37,17 @@ export class DeviceSubjectCutoutService implements SubjectCutoutService {
       );
     }
     try {
-      const cutout = await extractSubject(imageUri, {
+      const cutout = Platform.OS === 'android'
+        ? await NativeModules.DundunOfflineCutout.extractSubject(imageUri)
+        : await extractSubject(imageUri, {
         trim: true,
         format: 'png',
         maxPixels: 4_000_000,
       });
+      if (!cutout?.uri || !Number.isFinite(cutout.width) || !Number.isFinite(cutout.height)
+        || cutout.width < 2 || cutout.height < 2) {
+        throw new Error('Invalid cutout dimensions');
+      }
       return toImportedPhoto(cutout);
     } catch (error) {
       throw new AppError(
@@ -45,6 +55,12 @@ export class DeviceSubjectCutoutService implements SubjectCutoutService {
         '没有识别到清晰主体，请换一张主体完整、背景更干净的照片。',
         { cause: error },
       );
+    }
+  }
+
+  async releaseTemporary(uri: string): Promise<void> {
+    if (Platform.OS === 'android') {
+      await NativeModules.DundunOfflineCutout?.releaseCutout(uri);
     }
   }
 }

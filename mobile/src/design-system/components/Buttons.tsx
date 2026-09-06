@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   StyleSheet,
   Text,
@@ -8,6 +9,28 @@ import {
 } from 'react-native';
 
 import { colors, radii, spacing } from '../theme';
+import { useMotionEnabled } from './useMotionEnabled';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+const useButtonSquish = (enabled: boolean) => {
+  const progress = useRef(new Animated.Value(0)).current;
+  const motion = useMotionEnabled(enabled);
+  useEffect(() => {
+    if (!motion) { progress.stopAnimation(); progress.setValue(0); }
+    return () => progress.stopAnimation();
+  }, [motion, progress]);
+  return {
+    style: { transform: [
+      { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.965] }) },
+      { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 1.5] }) },
+    ] },
+    animate: (down: boolean) => {
+      if (!motion) return;
+      Animated.spring(progress, { toValue: down ? 1 : 0, damping: down ? 20 : 9, stiffness: 280, mass: 0.65, useNativeDriver: true, isInteraction: false }).start();
+    },
+  };
+};
 
 type ButtonProps = PressableProps & {
   label: string;
@@ -19,52 +42,66 @@ export const PrimaryButton = ({
   busy = false,
   disabled,
   style,
+  onPressIn,
+  onPressOut,
   ...props
-}: ButtonProps) => (
-  <Pressable
+}: ButtonProps) => {
+  const squish = useButtonSquish(!disabled && !busy);
+  const [pressed, setPressed] = useState(false);
+  return <AnimatedPressable
     accessibilityRole="button"
     disabled={disabled || busy}
-    style={({ pressed }) => [
+    style={[
       styles.primary,
       pressed && styles.pressed,
       (disabled || busy) && styles.disabled,
       typeof style === 'function' ? style({ pressed }) : style,
+      squish.style,
     ]}
     {...props}
+    onPressIn={event => { setPressed(true); squish.animate(true); onPressIn?.(event); }}
+    onPressOut={event => { setPressed(false); squish.animate(false); onPressOut?.(event); }}
   >
     {busy ? (
       <ActivityIndicator color={colors.white} />
     ) : (
       <Text style={styles.primaryText}>{label}</Text>
     )}
-  </Pressable>
-);
+  </AnimatedPressable>;
+};
 
 export const SecondaryButton = ({
   label,
   busy = false,
   disabled,
   style,
+  onPressIn,
+  onPressOut,
   ...props
-}: ButtonProps) => (
-  <Pressable
+}: ButtonProps) => {
+  const squish = useButtonSquish(!disabled && !busy);
+  const [pressed, setPressed] = useState(false);
+  return <AnimatedPressable
     accessibilityRole="button"
     disabled={disabled || busy}
-    style={({ pressed }) => [
+    style={[
       styles.secondary,
       pressed && styles.pressed,
       (disabled || busy) && styles.disabled,
       typeof style === 'function' ? style({ pressed }) : style,
+      squish.style,
     ]}
     {...props}
+    onPressIn={event => { setPressed(true); squish.animate(true); onPressIn?.(event); }}
+    onPressOut={event => { setPressed(false); squish.animate(false); onPressOut?.(event); }}
   >
     {busy ? (
       <ActivityIndicator color={colors.creamDeep} />
     ) : (
       <Text style={styles.secondaryText}>{label}</Text>
     )}
-  </Pressable>
-);
+  </AnimatedPressable>;
+};
 
 const styles = StyleSheet.create({
   primary: {

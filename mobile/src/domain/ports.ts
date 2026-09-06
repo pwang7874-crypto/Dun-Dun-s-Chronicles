@@ -34,6 +34,7 @@ export interface PhotoImporter {
 export interface SubjectCutoutService {
   readonly isSupported: boolean;
   extractSubject(imageUri: string): Promise<ImportedPhoto>;
+  releaseTemporary?(uri: string): Promise<void>;
 }
 
 export interface LocalAssetStore {
@@ -80,8 +81,10 @@ export interface CreativeRepository {
   saveProject(project: CreativeProject): Promise<void>;
   getShareDraft(recordId: string, channel: ShareDraft['channel']): Promise<ShareDraft | null>;
   saveShareDraft(draft: ShareDraft): Promise<void>;
-  createAiJob(job: AiGenerationJob): Promise<void>;
+  createAiJob(job: AiGenerationJob, inputAsset?: PhotoAssetV1): Promise<void>;
   updateAiJob(job: AiGenerationJob): Promise<void>;
+  completeAiJob(job: AiGenerationJob, outputAsset: PhotoAssetV1): Promise<void>;
+  selectStudioPhoto(recordId: string, assetId: string, updatedAt: string): Promise<void>;
   listAiJobs(recordId: string): Promise<AiGenerationJob[]>;
   getProfile(): Promise<LocalProfile>;
   saveProfile(profile: LocalProfile): Promise<void>;
@@ -89,8 +92,16 @@ export interface CreativeRepository {
   setFavorite(recordId: string, favorite: boolean, updatedAt: string): Promise<void>;
   addJournalSticker(sticker: JournalSticker, assets: PhotoAssetV1[]): Promise<void>;
   updateJournalSticker(sticker: JournalSticker): Promise<void>;
+  replaceJournalStickerCutout(stickerId: string, asset: PhotoAssetV1, updatedAt: string): Promise<PhotoAssetV1 | undefined>;
   deleteJournalSticker(stickerId: string): Promise<PhotoAssetV1[]>;
   deleteAllUserData(): Promise<PhotoAssetV1[]>;
+}
+
+export interface RemoteAiGeneration {
+  remoteJobId: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  errorCode?: string;
+  errorMessage?: string;
 }
 
 export interface AiArtService {
@@ -100,7 +111,11 @@ export interface AiArtService {
     recordId: string;
     styleId: string;
     imageUri: string;
-  }): Promise<{ remoteJobId: string }>;
+    contentType?: 'image/jpeg' | 'image/png';
+  }): Promise<RemoteAiGeneration>;
+  getGeneration(remoteJobId: string): Promise<RemoteAiGeneration>;
+  downloadGeneration(remoteJobId: string): Promise<ImportedPhoto>;
+  releaseDownload?(uri: string): Promise<void>;
   getEntitlement(): Promise<AiEntitlement>;
   redeemInvite(code: string): Promise<InviteRedeemResult>;
 }

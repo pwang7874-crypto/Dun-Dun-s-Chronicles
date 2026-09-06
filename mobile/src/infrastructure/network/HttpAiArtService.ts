@@ -1,7 +1,11 @@
-import type { AiArtService, AiEntitlement, InviteRedeemResult } from '../../domain/ports';
+import type { AiArtService, AiEntitlement, InviteRedeemResult, RemoteAiGeneration } from '../../domain/ports';
+import type { ImportedPhoto } from '../../domain/models';
 
 interface CreateGenerationResponse {
   jobId: string;
+  status?: RemoteAiGeneration['status'];
+  errorCode?: string;
+  errorMessage?: string;
 }
 
 interface ErrorBody {
@@ -42,7 +46,8 @@ export class HttpAiArtService implements AiArtService {
     recordId: string;
     styleId: string;
     imageUri: string;
-  }): Promise<{ remoteJobId: string }> {
+    contentType?: 'image/jpeg' | 'image/png';
+  }): Promise<RemoteAiGeneration> {
     const token = await this.requireToken();
     const body = new FormData();
     body.append('idempotency_key', input.jobId);
@@ -51,7 +56,7 @@ export class HttpAiArtService implements AiArtService {
     body.append('image', {
       uri: input.imageUri,
       name: `${input.recordId}.jpg`,
-      type: 'image/jpeg',
+      type: input.contentType ?? 'image/jpeg',
     } as unknown as Blob);
     const payload = await this.requestJson<Partial<CreateGenerationResponse>>(
       '/api/v1/ai/generations',
@@ -60,11 +65,49 @@ export class HttpAiArtService implements AiArtService {
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
         body,
       },
+      180000,
     );
-    if (!payload.jobId || typeof payload.jobId !== 'string' || payload.jobId.length > 80) {
+    return this.parseGeneration(payload);
+  }
+
+  async getGeneration(remoteJobId: string): Promise<RemoteAiGeneration> {
+    this.validateJobId(remoteJobId);
+    const token = await this.requireToken();
+    return this.parseGeneration(await this.requestJson<Partial<CreateGenerationResponse>>(
+      `/api/v1/ai/generations/${encodeURIComponent(remoteJobId)}`,
+      { method: 'GET', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } },
+    ));
+  }
+
+  async downloadGeneration(remoteJobId: string): Promise<ImportedPhoto> {
+    this.validateJobId(remoteJobId);
+    const token = await this.requireToken();
+    const { downloadAiImage } = await import('../media/NativeAiImageDownload');
+    // Never forward the user's bearer token to an arbitrary outputUrl returned by a provider.
+    return downloadAiImage(`${this.baseUrl}/api/v1/ai/generations/${encodeURIComponent(remoteJobId)}/image`, token);
+  }
+
+  async releaseDownload(uri: string): Promise<void> {
+    const { releaseAiImageDownload } = await import('../media/NativeAiImageDownload');
+    await releaseAiImageDownload(uri);
+  }
+
+  private validateJobId(value: unknown): asserts value is string {
+    if (typeof value !== 'string' || !/^[A-Za-z0-9-]{1,80}$/.test(value)) {
       throw new AiArtError('AI_SERVICE_INVALID_RESPONSE', '服务暂时没有正确回应，请稍后再试。');
     }
-    return { remoteJobId: payload.jobId };
+  }
+
+  private parseGeneration(payload: Partial<CreateGenerationResponse>): RemoteAiGeneration {
+    this.validateJobId(payload?.jobId);
+    const status = payload.status ?? 'processing';
+    if (!['queued', 'processing', 'completed', 'failed'].includes(status)) {
+      throw new AiArtError('AI_SERVICE_INVALID_RESPONSE', '服务暂时没有正确回应，请稍后再试。');
+    }
+    return { remoteJobId: payload.jobId, status,
+      ...(payload.errorCode && /^[A-Z0-9_]{1,80}$/.test(payload.errorCode) ? { errorCode: payload.errorCode } : {}),
+      ...(payload.errorMessage && payload.errorMessage.length <= 300 ? { errorMessage: payload.errorMessage } : {}),
+    };
   }
 
   async getEntitlement(): Promise<AiEntitlement> {
@@ -114,29 +157,27 @@ export class HttpAiArtService implements AiArtService {
     return token;
   }
 
-  private async requestJson<T>(path: string, init: RequestInit): Promise<T> {
+  private async requestJson<T>(path: string, init: RequestInit, timeoutMs = 30000): Promise<T> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-    let response: Response;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      response = await fetch(`${this.baseUrl}${path}`, { ...init, signal: controller.signal });
-    } catch {
-      throw new AiArtError('AI_NETWORK_UNAVAILABLE', '网络暂时没连上，请稍后再试。');
+      const response = await fetch(`${this.baseUrl}${path}`, { ...init, signal: controller.signal });
+      let payload: unknown = null;
+      try { payload = await response.json(); } catch { /* Validate below, including malformed gateway responses. */ }
+      if (controller.signal.aborted) throw new AiArtError('AI_TIMEOUT', '还没有收到结果，可以稍后继续查看这次创作。');
+      if (!response.ok) {
+        const error = (payload as ErrorBody | null)?.error;
+        const code = error?.code && /^[A-Z0-9_]{1,80}$/.test(error.code) ? error.code : `AI_SERVICE_HTTP_${response.status}`;
+        throw new AiArtError(code, error?.message && error.message.length <= 300 ? error.message : '这一步暂时没完成，请稍后再试。');
+      }
+      return payload as T;
+    } catch (error) {
+      if (error instanceof AiArtError) throw error;
+      throw new AiArtError(controller.signal.aborted ? 'AI_TIMEOUT' : 'AI_NETWORK_UNAVAILABLE',
+        '暂时没有收到回应，可以稍后继续查看这次创作。');
     } finally {
       clearTimeout(timeout);
     }
-    let payload: unknown = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
-    if (!response.ok) {
-      const error = (payload as ErrorBody | null)?.error;
-      const code = error?.code && /^[A-Z0-9_]{1,80}$/.test(error.code) ? error.code : `AI_SERVICE_HTTP_${response.status}`;
-      throw new AiArtError(code, error?.message && error.message.length <= 300 ? error.message : '这一步暂时没完成，请稍后再试。');
-    }
-    return payload as T;
   }
 
   private parseEntitlement(payload: Record<string, unknown>): AiEntitlement {

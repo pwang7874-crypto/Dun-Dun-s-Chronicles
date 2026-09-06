@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useState } from 'react';
 import {
   Image,
   type ImageResizeMode,
@@ -35,35 +35,9 @@ interface AlphaLayerProps {
  * 所以描边和投影会贴合头发、吸管、把手等不规则轮廓，而不是方形框。
  * 白边用纯白 #FFFFFF 并在奶油底上形成清晰对比，贴纸感更强。
  */
-const outerWhiteEdgeOffsets: readonly Offset[] = [
-  [-12, 0],
-  [0, -12],
-  [12, 0.5],
-  [-0.4, 12],
-  [-8.6, -8.6],
-  [8.6, -8.4],
-  [-8.4, 8.6],
-  [8.5, 8.4],
-  [-15, 0.3],
-  [-0.3, -15],
-  [15, -0.2],
-  [0.2, 15],
-  [-10.8, -10.6],
-  [10.6, -10.4],
-  [-10.5, 10.7],
-  [10.7, 10.5],
-];
-
-const innerWhiteEdgeOffsets: readonly Offset[] = [
-  [-8, 0],
-  [0, -8],
-  [8, 0],
-  [0, 8],
-  [-5.7, -5.7],
-  [5.7, -5.6],
-  [-5.6, 5.7],
-  [5.6, 5.6],
-];
+const edgeDirections: readonly Offset[] = Array.from({ length: 12 }, (_, i) => [
+  Math.cos(i * Math.PI / 6), Math.sin(i * Math.PI / 6),
+] as const);
 
 const AlphaLayer = ({
   blurRadius,
@@ -114,61 +88,54 @@ export const PaperCutoutSticker = memo(({
   resizeMode = 'contain',
 }: Props) => {
   const source = useMemo<ImageSourcePropType>(() => ({ uri }), [uri]);
+  const [edge, setEdge] = useState(5);
 
   return (
     <View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       pointerEvents="none"
+      onLayout={({ nativeEvent: { layout } }) => {
+        setEdge(Math.max(3, Math.min(8, Math.min(layout.width, layout.height) * 0.035)));
+      }}
       style={[style, styles.root]}
     >
       <View
-        renderToHardwareTextureAndroid
-        shouldRasterizeIOS
         style={styles.artwork}
       >
         <View style={styles.subjectBounds}>
           {/* 明显向下的深色投影，让贴纸与浅色画布分离开。 */}
           <AlphaLayer
-            blurRadius={6}
+            blurRadius={4}
             imageStyle={imageStyle}
-            offset={[3, 13]}
-            opacity={0.32}
+            offset={[1, edge + 4]}
+            opacity={0.2}
             resizeMode={resizeMode}
             source={source}
             tintColor="#5A3E2B"
           />
           <AlphaLayer
-            blurRadius={2.6}
+            blurRadius={1.5}
             imageStyle={imageStyle}
-            offset={[2, 7]}
-            opacity={0.24}
+            offset={[0, edge + 1]}
+            opacity={0.16}
             resizeMode={resizeMode}
             source={source}
             tintColor="#6B4A32"
           />
 
           {/* 一圈纯白粗描边：先外圈后内圈，覆盖主体轮廓形成贴纸白边。 */}
-          {outerWhiteEdgeOffsets.map(([x, y]) => (
+          {edgeDirections.map(([x, y], index) => (
             <AlphaLayer
-              key={`outer:${x}:${y}`}
+              key={`edge:${index}`}
               imageStyle={imageStyle}
-              offset={[x, y]}
+              offset={[x * edge, y * edge]}
               resizeMode={resizeMode}
               source={source}
               tintColor="#FFFFFF"
             />
           ))}
-          {innerWhiteEdgeOffsets.map(([x, y]) => (
-            <AlphaLayer
-              key={`inner:${x}:${y}`}
-              imageStyle={imageStyle}
-              offset={[x, y]}
-              resizeMode={resizeMode}
-              source={source}
-              tintColor="#FFFFFF"
-            />
-          ))}
+          <AlphaLayer imageStyle={imageStyle} resizeMode={resizeMode} source={source} tintColor="#FFFFFF" />
 
           {/* 主体本身。 */}
           <Image
@@ -179,15 +146,7 @@ export const PaperCutoutSticker = memo(({
             style={[styles.layer, imageStyle, styles.alphaImage]}
           />
 
-          {/* 轻微顶部高光，保留一点手账质感但不抢白边。 */}
-          <AlphaLayer
-            imageStyle={imageStyle}
-            offset={[-0.6, -0.8]}
-            opacity={0.12}
-            resizeMode={resizeMode}
-            source={source}
-            tintColor="#FFFFFF"
-          />
+          {/* No texture or white overlay above the original-colour photo. */}
         </View>
       </View>
     </View>

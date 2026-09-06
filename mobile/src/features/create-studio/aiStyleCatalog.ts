@@ -1,4 +1,5 @@
 import { colors } from '../../design-system/theme';
+import type { ImageSourcePropType } from 'react-native';
 
 export type AiStyleCategory = '手帐' | '插画' | '影像';
 
@@ -8,6 +9,21 @@ export type AiStyleCard = {
   note: string;
   category: AiStyleCategory;
   tone: string;
+};
+
+export const aiStylePreviews: Record<string, ImageSourcePropType> = {
+  'cream-poster': require('../../assets/ai-styles/cream-poster.jpg'),
+  'jelly-collage': require('../../assets/ai-styles/jelly-collage.jpg'),
+  'rain-notebook': require('../../assets/ai-styles/rain-notebook.jpg'),
+  'riso-candy': require('../../assets/ai-styles/riso-candy.jpg'),
+  'ticket-zine': require('../../assets/ai-styles/ticket-zine.jpg'),
+  'polaroid-note': require('../../assets/ai-styles/polaroid-note.jpg'),
+  'crayon-doodle': require('../../assets/ai-styles/crayon-doodle.jpg'),
+  'watercolor-cafe': require('../../assets/ai-styles/watercolor-cafe.jpg'),
+  'ccd-flash': require('../../assets/ai-styles/ccd-flash.jpg'),
+  'editorial-grid': require('../../assets/ai-styles/editorial-grid.jpg'),
+  'picture-book': require('../../assets/ai-styles/picture-book.jpg'),
+  'paper-diorama': require('../../assets/ai-styles/paper-diorama.jpg'),
 };
 
 // 客户端只提交 style id。真正的提示词保存在服务端白名单里，避免把可篡改的

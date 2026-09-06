@@ -1,6 +1,10 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+
+from app.core.security import hash_invite_code
+from app.models import InviteCode, User
 
 from tests.conftest import PNG, auth_headers, seed_invite_code
 
@@ -130,3 +134,85 @@ def test_invite_login_rejects_unknown_code(app_factory):
         result = client.post("/api/v1/auth/invite", json={"code": "NOPE9999"})
         assert result.status_code == 422
         assert result.json()["error"]["code"] == "INVITE_CODE_INVALID"
+
+
+def test_unactivated_expired_invite_cannot_login(app_factory):
+    app = app_factory()
+    seed_invite_code(app, code="EXPIREDLOGIN1", expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
+    with TestClient(app) as client:
+        response = client.post("/api/v1/auth/invite", json={"code": "EXPIREDLOGIN1"})
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "INVITE_CODE_EXPIRED"
+    with app.state.session_factory() as db:
+        assert db.scalar(select(func.count()).select_from(User)) == 0
+
+
+def test_activation_deadline_does_not_expire_existing_account_or_reset_credits(app_factory):
+    app = app_factory()
+    code = seed_invite_code(app, code="KEEPLOGIN123", credits=7)
+    with TestClient(app) as client:
+        first = client.post("/api/v1/auth/invite", json={"code": code}).json()
+        claims = app.state.tokens.verify(first["accessToken"])
+        with app.state.session_factory() as db:
+            invite = db.scalar(select(InviteCode).where(
+                InviteCode.code_hash == hash_invite_code(code, app.state.settings.invite_code_secret)
+            ))
+            invite.expires_at = datetime.now(timezone.utc) - timedelta(days=1)
+            db.get(User, claims.user_id).invite_credits_remaining = 2
+            db.commit()
+        again = client.post("/api/v1/auth/invite", json={"code": code})
+        assert again.status_code == 200
+        assert app.state.tokens.verify(again.json()["accessToken"]).user_id == claims.user_id
+        assert again.json()["expiresIn"] == 30 * 24 * 60 * 60
+        headers = {"Authorization": "Bearer " + again.json()["accessToken"]}
+        assert client.get("/api/v1/me/entitlements", headers=headers).json()["inviteCreditsRemaining"] == 2
+
+
+def test_invite_and_session_survive_app_restart_with_persistent_database(app_factory):
+    first_app = app_factory()
+    code = seed_invite_code(first_app, code="RESTARTLOGIN1", credits=4)
+    with TestClient(first_app) as client:
+        login = client.post("/api/v1/auth/invite", json={"code": code}).json()
+    first_app.state.engine.dispose()
+    # 第二个服务进程使用同一持久路径；这不代表 /tmp 在云实例回收后能保留。
+    second_app = app_factory()
+    with TestClient(second_app) as client:
+        headers = {"Authorization": "Bearer " + login["accessToken"]}
+        response = client.get("/api/v1/me/entitlements", headers=headers)
+        assert response.status_code == 200
+        assert response.json()["inviteCreditsRemaining"] == 4
+        again = client.post("/api/v1/auth/invite", json={"code": code})
+        assert again.status_code == 200
+        assert second_app.state.tokens.verify(again.json()["accessToken"]).user_id == first_app.state.tokens.verify(login["accessToken"]).user_id
+
+
+def test_concurrent_first_invite_login_returns_one_account_and_one_credit_grant(app_factory):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from sqlalchemy.orm import Session, sessionmaker
+    from app.services.auth import AuthService
+    from tests.conftest import FakeSmsProvider
+
+    app = app_factory()
+    code = seed_invite_code(app, code="RACELOGIN123", credits=6)
+    barrier = Barrier(6)
+
+    class ConcurrentSession(Session):
+        def scalar(self, statement, *args, **kwargs):
+            value = super().scalar(statement, *args, **kwargs)
+            if InviteCode in [column.get("entity") for column in statement.column_descriptions] and not self.info.get("invite_read"):
+                self.info["invite_read"] = True
+                barrier.wait(timeout=15)
+            return value
+
+    service = AuthService(
+        sessionmaker(bind=app.state.engine, class_=ConcurrentSession, expire_on_commit=False),
+        FakeSmsProvider(), app.state.tokens,
+        app.state.settings.phone_hash_secret, app.state.settings.invite_code_secret,
+    )
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        results = list(executor.map(lambda _: service.login_with_invite(code), range(6)))
+    assert len({user.id for user, _ in results}) == 1
+    with app.state.session_factory() as db:
+        assert db.scalar(select(func.count()).select_from(User)) == 1
+        assert db.scalar(select(User.invite_credits_remaining)) == 6
